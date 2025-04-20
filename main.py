@@ -38,6 +38,10 @@ def saldo():
         return f"Erro ao obter saldo: {str(e)}"
 
 if __name__ == "__main__":
+    # Iniciar o loop automático em background
+    threading.Thread(target=monitorar_mercado).start()
+
+    # Iniciar o servidor Flask
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
 
