@@ -8,7 +8,6 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-# API BYBIT
 api_key = os.getenv("BYBIT_API_KEY")
 api_secret = os.getenv("BYBIT_API_SECRET")
 
@@ -20,7 +19,7 @@ session = HTTP(
 
 @app.route("/")
 def home():
-    return "✅ SukachBot CRYPTO ativo com 10 USDT | 6x | TP 3% | SL 1.5% | Log de verificação ligado"
+    return "✅ SukachBot CRYPTO ativo com 21 pares, 10 USDT, 6x, TP 3%, SL 1.5%, Log 60s"
 
 @app.route("/saldo")
 def saldo():
@@ -40,8 +39,6 @@ def saldo():
         return output or "Sem saldo disponível."
     except Exception as e:
         return f"Erro ao obter saldo: {str(e)}"
-
-# === Indicadores ===
 
 def calcular_rsi(fechamentos, periodo=14):
     diffs = np.diff(fechamentos)
@@ -78,15 +75,15 @@ def contar_sinais(velas):
     ]
     return sum(condicoes)
 
-# === Lista de Pares (1000SHIB removido) ===
+# ✅ Lista de 21 pares
 
 pares = [
     "BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "MATICUSDT",
     "AVAXUSDT", "LINKUSDT", "TONUSDT", "FETUSDT", "ADAUSDT",
-    "RNDRUSDT"
+    "RNDRUSDT", "BNBUSDT", "XRPUSDT", "OPUSDT", "APTUSDT",
+    "NEARUSDT", "SUIUSDT", "ARBUSDT", "LDOUSDT", "FILUSDT",
+    "PEPEUSDT"
 ]
-
-# === Monitorar Mercado com Contador e Log por Minuto ===
 
 def monitorar_mercado():
     verificados = 0
@@ -153,7 +150,6 @@ def monitorar_mercado():
 
                 time.sleep(0.1)
 
-            # Log de status a cada 60 segundos
             if time.time() - ultimo_log >= 60:
                 agora = datetime.now().strftime("%H:%M:%S")
                 print(f"\n🟢 [{agora}] Bot ativo — últimos 60s:")
@@ -166,8 +162,6 @@ def monitorar_mercado():
         except Exception as e:
             print(f"⚠️ Erro ao monitorar mercado: {str(e)}")
             time.sleep(2)
-
-# === Iniciar App ===
 
 if __name__ == "__main__":
     threading.Thread(target=monitorar_mercado).start()
