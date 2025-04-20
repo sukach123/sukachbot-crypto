@@ -24,12 +24,13 @@ TAKE_PROFIT_PORCENTAGEM = 0.03  # 3%
 STOP_LOSS_PORCENTAGEM = 0.015   # 1.5%
 
 # --- TELEGRAM ---
-BOT_TOKEN = "7830564079:AAER2NNtWfoF0Nsv94Z_WXdPAXQbdsKdcmk"
-CHAT_ID = "1407960941"
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 if not BOT_TOKEN or not CHAT_ID:
-    raise ValueError("Erro: O BOT_TOKEN ou CHAT_ID do Telegram não está configurado corretamente.")
+    raise ValueError("Erro: O BOT_TOKEN ou CHAT_ID do Telegram não estão configurados corretamente.")
 
+# --- Função para enviar mensagens ao Telegram ---
 def enviar_telegram_mensagem(mensagem):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": mensagem, "parse_mode": "Markdown"}
@@ -41,7 +42,7 @@ def enviar_telegram_mensagem(mensagem):
         print("Erro ao enviar mensagem para Telegram:", e)
         raise
 
-# --- Lógica de Stop Loss e Take Profit ---
+# --- Lógica para cálculo de TP e SL ---
 def calcular_tp_sl(preco_entrada, direcao):
     try:
         if direcao.lower() == "buy":
@@ -57,7 +58,7 @@ def calcular_tp_sl(preco_entrada, direcao):
         print("Erro ao calcular TP e SL:", e)
         raise
 
-# --- EXECUTAR ORDEM NA BYBIT ---
+# --- Função para executar ordem na Bybit ---
 def executar_ordem(par, preco_entrada, direcao, preco_atual):
     try:
         tp, sl = calcular_tp_sl(preco_entrada if preco_entrada else preco_atual, direcao)
