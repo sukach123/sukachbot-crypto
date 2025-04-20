@@ -41,6 +41,7 @@ import time
 import random
 import threading
 
+
 def monitorar_mercado():
     while True:
         try:
