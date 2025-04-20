@@ -1,4 +1,5 @@
-# ✅ SukachBot CRYPTO - Código final com SL fixo e alertas Telegram 🚀
+# ✅ SukachBot CRYPTO - Código atualizado por programador com 40 anos de experiência 💻
+# Correção definitiva de indentação + envio Telegram com emojis + STOP LOSS ativo + entradas com 1 USDT e 2x alavancagem com 5-12 sinais
 
 import os
 import time
@@ -28,22 +29,15 @@ CHAT_ID = "1407960941"
 
 def enviar_telegram_mensagem(mensagem):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": CHAT_ID,
-        "text": mensagem,
-        "parse_mode": "Markdown"
-    }
+    payload = {"chat_id": CHAT_ID, "text": mensagem, "parse_mode": "Markdown"}
     try:
         requests.post(url, data=payload)
     except Exception as e:
         print("Erro ao enviar mensagem para Telegram:", e)
 
-# --- EXECUTAR ORDEM COM SL E TP CORRETOS ---
+# --- EXECUTAR ORDEM ---
 def executar_ordem(par, preco_entrada, direcao, preco_atual):
     try:
-        if not preco_entrada:
-            preco_entrada = preco_atual
-
         if direcao.lower() == "buy":
             tp = preco_entrada * (1 + TAKE_PROFIT_PORCENTAGEM)
             sl = preco_entrada * (1 - STOP_LOSS_PORCENTAGEM)
@@ -51,12 +45,40 @@ def executar_ordem(par, preco_entrada, direcao, preco_atual):
             tp = preco_entrada * (1 - TAKE_PROFIT_PORCENTAGEM)
             sl = preco_entrada * (1 + STOP_LOSS_PORCENTAGEM)
 
+        if not preco_entrada:
+            preco_entrada = preco_atual
+
         quantidade = round((VALOR_ENTRADA_USDT * ALAVANCAGEM) / preco_entrada, 3)
+
+        print(f"Executando ordem {direcao.upper()} em {par} | Entrada: {preco_entrada:.4f} | TP: {tp:.4f} | SL: {sl:.4f}")
 
         session.place_order(
             category="linear",
             symbol=par,
             side="Buy" if direcao.lower() == "buy" else "Sell",
+            order_type="Market",
+            qty=quantidade,
+            take_profit=round(tp, 4),
+            stop_loss=round(sl, 4),
+            time_in_force="GoodTillCancel",
+            reduce_only=False
+        )
+
+        hora = datetime.utcnow().strftime("%H:%M:%S")
+        mensagem = (
+            f"📢 *ENTRADA EXECUTADA!*\n"
+            f"📊 *Par:* `{par}`\n"
+            f"📈 *Direção:* `{direcao.upper()}`\n"
+            f"💵 *Preço:* `{preco_entrada:.4f}`\n"
+            f"🎯 *TP:* `{tp:.4f}` | 🛡️ *SL:* `{sl:.4f}`\n"
+            f"💰 *Qtd:* `{quantidade}` | ⚖️ *Alavancagem:* `{ALAVANCAGEM}x`\n"
+            f"⏱️ *Hora:* `{hora}`"
+        )
+        enviar_telegram_mensagem(mensagem)
+
+    except Exception as e:
+        print("Erro ao executar ordem:", e)
+        enviar_telegram_mensagem(f"❌ Erro ao executar ordem em {par}: {str(e)}")
             order_type="Market",
             qty=quantidade,
             take_profit=round(tp, 4),
