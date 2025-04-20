@@ -93,8 +93,7 @@ pares = [
     "RNDRUSDT", "SHIBUSDT"
 ]
 
-
-            time.sleep(2)
+time.sleep(2)
 
 # Iniciar o loop automático em background
 threading.Thread(target=monitorar_mercado).start()
