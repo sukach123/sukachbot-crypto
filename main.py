@@ -2,43 +2,38 @@ from flask import Flask
 import os
 import time
 import threading
-from pybit.unified_trading import HTTP
+import requests
 import numpy as np
 from datetime import datetime
+from pybit.unified_trading import HTTP
 
 app = Flask(__name__)
 
 api_key = os.getenv("BYBIT_API_KEY")
 api_secret = os.getenv("BYBIT_API_SECRET")
 
-session = HTTP(
-    api_key=api_key,
-    api_secret=api_secret,
-    testnet=False
-)
+session = HTTP(api_key=api_key, api_secret=api_secret, testnet=False)
+
+# ✅ Função para enviar mensagem para o Telegram
+def enviar_telegram_mensagem(mensagem):
+    bot_token = "7830564079:AAER2NNtWfoF0Nsv94Z_WXdPAXQbdsKdcmk"
+    chat_id = "1407960941"
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": mensagem,
+        "parse_mode": "Markdown"
+    }
+    try:
+        response = requests.post(url, data=payload)
+        if response.status_code != 200:
+            print("Erro ao enviar mensagem para Telegram:", response.text)
+    except Exception as e:
+        print("Exceção ao enviar mensagem:", e)
 
 @app.route("/")
 def home():
-    return "✅ SukachBot CRYPTO (TESTE 5+ sinais) | 10 USDT | 10x | TP 3% | SL 1.5% | Qty segura"
-
-@app.route("/saldo")
-def saldo():
-    try:
-        response = session.get_wallet_balance(accountType="UNIFIED")
-        coins = response["result"]["list"][0]["coin"]
-        output = "<h2>Saldo Atual:</h2><ul>"
-        for coin in coins:
-            value = coin.get("availableToWithdraw", "0")
-            try:
-                balance = float(value)
-                if balance > 0:
-                    output += f"<li>{coin['coin']}: {balance}</li>"
-            except ValueError:
-                continue
-        output += "</ul>"
-        return output or "Sem saldo disponível."
-    except Exception as e:
-        return f"Erro ao obter saldo: {str(e)}"
+    return "✅ SukachBot CRYPTO ativo com SL/TP precisos + Telegram ✅"
 
 def calcular_rsi(fechamentos, periodo=14):
     diffs = np.diff(fechamentos)
@@ -75,13 +70,11 @@ def contar_sinais(velas):
     ]
     return sum(condicoes)
 
-# ✅ Lista atualizada de 20 pares (PEPE removido)
-
 pares = [
     "BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "MATICUSDT",
     "AVAXUSDT", "LINKUSDT", "TONUSDT", "FETUSDT", "ADAUSDT",
     "RNDRUSDT", "BNBUSDT", "XRPUSDT", "OPUSDT", "APTUSDT",
-    "NEARUSDT", "SUIUSDT", "ARBUSDT", "LDOUSDT", "FILUSDT"
+    "NEARUSDT", "SUIUSDT", "ARBUSDT", "LDOUSDT", "FILUSDT", "1000SHIBUSDT"
 ]
 
 def monitorar_mercado():
@@ -119,37 +112,52 @@ def monitorar_mercado():
 
                 total_sinais = contar_sinais(velas)
 
-                if total_sinais >= 5:
+                if total_sinais >= 6:
                     preco_atual = velas[-1]["close"]
-                    tp = round(preco_atual * 1.03, 4)
-                    sl = round(preco_atual * 0.985, 4)
                     usdt_alvo = 10
                     alavancagem = 10
-
-                    # ✅ Arredondamento seguro para evitar erro
                     raw_qty = (usdt_alvo * alavancagem) / preco_atual
                     qty = round(raw_qty, 1)
 
-                    entradas += 1
-                    print(f"✅ Entrada TESTE: {par} com {total_sinais}/12 sinais")
-                    print(f"🚀 Ordem: {par} | Qty: {qty} | TP: {tp} | SL: {sl}")
-
-                    session.place_order(
+                    ordem = session.place_order(
                         category="linear",
                         symbol=par,
                         side="Buy",
                         orderType="Market",
                         qty=qty,
-                        takeProfit=tp,
-                        stopLoss=sl,
                         leverage=alavancagem
                     )
+
+                    if ordem["retCode"] == 0:
+                        preco_exec = float(ordem["result"]["orderPrice"]) if "orderPrice" in ordem["result"] else preco_atual
+                        tp = round(preco_exec * 1.03, 4)
+                        sl = round(preco_exec * 0.985, 4)
+
+                        session.set_trading_stop(
+                            category="linear",
+                            symbol=par,
+                            takeProfit=tp,
+                            stopLoss=sl
+                        )
+
+                        entradas += 1
+                        mensagem = (
+                            f"*🚀 ENTRADA EXECUTADA*\n"
+                            f"Par: {par}\n"
+                            f"Qtd: {qty}\n"
+                            f"Preço entrada: {preco_exec}\n"
+                            f"🎯 TP: {tp} | 🛡️ SL: {sl}\n"
+                            f"Sinais: {total_sinais}/12\n"
+                            f"Alavancagem: 10x"
+                        )
+                        print(mensagem)
+                        enviar_telegram_mensagem(mensagem)
 
                 time.sleep(0.1)
 
             if time.time() - ultimo_log >= 60:
                 agora = datetime.now().strftime("%H:%M:%S")
-                print(f"\n🟢 [{agora}] Bot TESTE ativo — últimos 60s:")
+                print(f"\n🟢 [{agora}] Bot ativo — últimos 60s:")
                 print(f"🔹 Pares verificados: {verificados}")
                 print(f"🔹 Entradas executadas: {entradas}\n")
                 verificados = entradas = 0
