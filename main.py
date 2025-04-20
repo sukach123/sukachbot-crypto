@@ -40,6 +40,36 @@ def saldo():
     except Exception as e:
         return f"Erro ao obter saldo: {str(e)}"
 
+# ✅ Função Fibonacci
+def calcular_fibonacci_tp_sl(velas, direcao="compra"):
+    if len(velas) < 5:
+        return None
+
+    # Extrair as últimas 5 velas
+    ultimas = velas[-5:]
+
+    swing_high = max(ultimas, key=lambda x: x['high'])['high']
+    swing_low = min(ultimas, key=lambda x: x['low'])['low']
+
+    if direcao == "compra":
+        fib_618 = swing_high - (swing_high - swing_low) * 0.618
+        tp1 = swing_high + (swing_high - swing_low) * 1.272
+        tp2 = swing_high + (swing_high - swing_low) * 1.618
+        sl = fib_618
+    else:
+        fib_618 = swing_low + (swing_high - swing_low) * 0.618
+        tp1 = swing_low - (swing_high - swing_low) * 1.272
+        tp2 = swing_low - (swing_high - swing_low) * 1.618
+        sl = fib_618
+
+    return {
+        "tp_1.272": round(tp1, 3),
+        "tp_1.618": round(tp2, 3),
+        "sl_fib_0.618": round(sl, 3),
+        "swing_high": swing_high,
+        "swing_low": swing_low
+    }
+
 # Lista de pares monitorados
 pares = [
     "BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "MATICUSDT",
@@ -53,17 +83,28 @@ def monitorar_mercado():
             par = random.choice(pares)
             print(f"🔍 Verificando oportunidade em {par}")
 
-            candle = session.get_kline(
+            velas_raw = session.get_kline(
                 category="linear",
                 symbol=par,
                 interval="1",
-                limit=2
+                limit=20
             )["result"]["list"]
 
-            ultima = candle[-1]
-            preco_abertura = float(ultima[1])
-            preco_fechamento = float(ultima[4])
-            volume = float(ultima[5])
+            velas = []
+            for v in velas_raw:
+                velas.append({
+                    "timestamp": v[0],
+                    "open": float(v[1]),
+                    "high": float(v[2]),
+                    "low": float(v[3]),
+                    "close": float(v[4]),
+                    "volume": float(v[5])
+                })
+
+            ultima = velas[-1]
+            preco_abertura = ultima["open"]
+            preco_fechamento = ultima["close"]
+            volume = ultima["volume"]
 
             if preco_fechamento > preco_abertura and volume > 1000:
                 print(f"✅ Sinal de COMPRA detectado em {par}")
@@ -73,8 +114,15 @@ def monitorar_mercado():
                 alavancagem = 4
                 qty = round((usdt_alvo * alavancagem) / preco_atual, 3)
 
-                take_profit = round(preco_atual * 1.03, 3)  # +3% lucro
-                stop_loss = round(preco_atual * 0.99, 3)    # -1% perda
+                fib = calcular_fibonacci_tp_sl(velas, direcao="compra")
+
+                if not fib:
+                    print("❌ Não foi possível calcular Fibonacci. Pulando.")
+                    time.sleep(1)
+                    continue
+
+                take_profit = fib["tp_1.272"]
+                stop_loss = fib["sl_fib_0.618"]
 
                 session.place_order(
                     category="linear",
@@ -87,7 +135,7 @@ def monitorar_mercado():
                     leverage=alavancagem
                 )
 
-                print(f"🚀 Ordem enviada: {par}, valor máximo: 5 USDT, qty: {qty}, TP: {take_profit}, SL: {stop_loss}, alavancagem: {alavancagem}x")
+                print(f"🚀 Ordem enviada: {par}, qty: {qty}, TP: {take_profit}, SL: {stop_loss}, alavancagem: {alavancagem}x")
 
             time.sleep(1)
 
@@ -99,4 +147,3 @@ if __name__ == "__main__":
     threading.Thread(target=monitorar_mercado).start()
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
-
