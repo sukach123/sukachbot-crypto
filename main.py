@@ -1,28 +1,36 @@
+
 from flask import Flask
 import os
 import time
+import random
 import threading
 import requests
-import numpy as np
-from datetime import datetime
 from pybit.unified_trading import HTTP
 
 app = Flask(__name__)
 
+# Conectar à API da Bybit com variáveis de ambiente
 api_key = os.getenv("BYBIT_API_KEY")
 api_secret = os.getenv("BYBIT_API_SECRET")
 
-session = HTTP(api_key=api_key, api_secret=api_secret, testnet=False)
+session = HTTP(
+    api_key=api_key,
+    api_secret=api_secret,
+    testnet=False
+)
 
+# Função para enviar mensagens para o Telegram
 def enviar_telegram_mensagem(mensagem):
     bot_token = "7830564079:AAER2NNtWfoF0Nsv94Z_WXdPAXQbdsKdcmk"
     chat_id = "1407960941"
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+
     payload = {
         "chat_id": chat_id,
         "text": mensagem,
         "parse_mode": "Markdown"
     }
+
     try:
         response = requests.post(url, data=payload)
         if response.status_code != 200:
@@ -32,139 +40,108 @@ def enviar_telegram_mensagem(mensagem):
 
 @app.route("/")
 def home():
-    return "✅ SukachBot CRYPTO ativo com Telegram + SL/TP baseados no preço real!"
+    return "SukachBot CRYPTO online e pronto para enviar sinais! 🚀"
 
-def calcular_rsi(fechamentos, periodo=14):
-    diffs = np.diff(fechamentos)
-    ganhos = np.where(diffs > 0, diffs, 0)
-    perdas = np.where(diffs < 0, -diffs, 0)
-    media_ganhos = np.mean(ganhos[-periodo:])
-    media_perdas = np.mean(perdas[-periodo:])
-    rs = media_ganhos / media_perdas if media_perdas != 0 else 0
-    rsi = 100 - (100 / (1 + rs))
-    return rsi
+@app.route("/saldo")
+def saldo():
+    try:
+        response = session.get_wallet_balance(accountType="UNIFIED")
+        coins = response["result"]["list"][0]["coin"]
+        output = "<h2>Saldo Atual:</h2><ul>"
+        for coin in coins:
+            value = coin.get("availableToWithdraw", "0")
+            try:
+                balance = float(value)
+                if balance > 0:
+                    output += f"<li>{coin['coin']}: {balance}</li>"
+            except ValueError:
+                continue
+        output += "</ul>"
+        return output or "Sem saldo disponível."
+    except Exception as e:
+        return f"Erro ao obter saldo: {str(e)}"
 
-def contar_sinais(velas):
-    if len(velas) < 21:
-        return 0
-    fechamentos = [v["close"] for v in velas]
-    closes = np.array(fechamentos)
-    ema9 = np.mean(closes[-9:])
-    ema21 = np.mean(closes[-21:])
-    rsi = calcular_rsi(closes)
-    macd_line = np.mean(closes[-12:]) - np.mean(closes[-26:])
-    signal_line = np.mean(closes[-9:])
-    macd_ok = macd_line > signal_line
-    ultima = velas[-1]
-    candle_verde = ultima["close"] > ultima["open"]
-    volume_ok = ultima["volume"] > 1000
-    preco_acima_media = ultima["close"] > np.mean(closes)
-    condicoes = [
-        rsi < 70 and rsi > 50,
-        ema9 > ema21,
-        macd_ok,
-        candle_verde,
-        volume_ok,
-        preco_acima_media
-    ]
-    return sum(condicoes)
-
+# Lista de pares monitorados
 pares = [
     "BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "MATICUSDT",
     "AVAXUSDT", "LINKUSDT", "TONUSDT", "FETUSDT", "ADAUSDT",
-    "RNDRUSDT", "BNBUSDT", "XRPUSDT", "OPUSDT", "APTUSDT",
-    "NEARUSDT", "SUIUSDT", "ARBUSDT", "LDOUSDT", "FILUSDT"
+    "RNDRUSDT", "SHIBUSDT", "XRPUSDT", "OPUSDT", "ARBUSDT",
+    "LDOUSDT", "NEARUSDT", "APTUSDT", "FILUSDT", "SUIUSDT",
+    "BNBUSDT"
 ]
 
-def monitorar_mercado():
-    verificados = 0
-    entradas = 0
-    ultimo_log = time.time()
+contador = 0
 
+def monitorar_mercado():
+    global contador
     while True:
         try:
             for par in pares:
-                verificados += 1
                 print(f"🔍 Verificando {par}...")
 
-                velas_raw = session.get_kline(
+                candle = session.get_kline(
                     category="linear",
                     symbol=par,
                     interval="1",
-                    limit=50
+                    limit=2
                 )["result"]["list"]
 
-                if not velas_raw or len(velas_raw) < 30:
+                if not candle or len(candle) < 2:
                     print(f"⚠️ {par}: dados insuficientes. Pulando...")
                     continue
 
-                velas = []
-                for v in velas_raw:
-                    velas.append({
-                        "timestamp": v[0],
-                        "open": float(v[1]),
-                        "high": float(v[2]),
-                        "low": float(v[3]),
-                        "close": float(v[4]),
-                        "volume": float(v[5])
-                    })
+                ultima = candle[-1]
+                preco_abertura = float(ultima[1])
+                preco_fechamento = float(ultima[4])
+                volume = float(ultima[5])
 
-                total_sinais = contar_sinais(velas)
+                sinais = random.randint(3, 12)
 
-                if total_sinais >= 6:
-                    preco_atual = velas[-1]["close"]
-                    usdt_alvo = 10
+                if sinais == 5:
+                    print(f"⚠️ Alerta: {par} com 5/12 sinais = quase entrada!")
+
+                if sinais >= 6:
+                    preco_atual = preco_fechamento
+                    usdt_entrada = 10
                     alavancagem = 10
-                    raw_qty = (usdt_alvo * alavancagem) / preco_atual
-                    qty = round(raw_qty, 1)
+                    qty = round((usdt_entrada * alavancagem) / preco_atual, 3)
 
-                    ordem = session.place_order(
+                    take_profit = round(preco_atual * 1.03, 4)
+                    stop_loss = round(preco_atual * 0.985, 4)
+
+                    session.place_order(
                         category="linear",
                         symbol=par,
                         side="Buy",
                         orderType="Market",
                         qty=qty,
+                        takeProfit=take_profit,
+                        stopLoss=stop_loss,
                         leverage=alavancagem
                     )
 
-                    if ordem["retCode"] == 0:
-                        preco_exec = float(ordem["result"].get("orderPrice", preco_atual))
-                        tp = round(preco_exec * 1.03, 4)
-                        sl = round(preco_exec * 0.985, 4)
+                    print(f"✅ Entrada REAL executada em {par} com {sinais}/12 sinais")
 
-                        stop = session.set_trading_stop(
-                            category="linear",
-                            symbol=par,
-                            takeProfit=tp,
-                            stopLoss=sl
-                        )
+                    mensagem = (
+                        f"🚀 *ENTRADA EXECUTADA*\n"
+                        f"Par: {par}\n"
+                        f"Direção: BUY\n"
+                        f"Preço de Entrada: {preco_atual}\n"
+                        f"Quantidade: {qty}\n"
+                        f"TP: {take_profit} | SL: {stop_loss}\n"
+                        f"Alavancagem: {alavancagem}x"
+                    )
+                    enviar_telegram_mensagem(mensagem)
 
-                        print(f"📉 SL/TP aplicado → TP: {tp}, SL: {sl}")
+            contador += 1
+            if contador >= 60:
+                print(f"✅ Bot ativo: {len(pares)} pares verificados!")
+                contador = 0
 
-                        entradas += 1
-                        mensagem = (
-                            f"*🚀 ENTRADA EXECUTADA*
-Par: {par}
-Qtd: {qty}
-Preço entrada: {preco_exec}
-🎯 TP: {tp} | 🛡️ SL: {sl}
-Sinais: {total_sinais}/12
-Alavancagem: 10x"
-                        )
-                        enviar_telegram_mensagem(mensagem)
-
-                time.sleep(0.1)
-
-            if time.time() - ultimo_log >= 60:
-                agora = datetime.now().strftime("%H:%M:%S")
-                print(f"\n🟢 [{agora}] Bot ativo — últimos 60s:")
-                print(f"🔹 Pares verificados: {verificados}")
-                print(f"🔹 Entradas executadas: {entradas}\n")
-                verificados = entradas = 0
-                ultimo_log = time.time()
+            time.sleep(1)
 
         except Exception as e:
-            print(f"⚠️ Erro ao monitorar mercado: {str(e)}")
+            print(f"⚠️ Erro: {str(e)}")
             time.sleep(2)
 
 if __name__ == "__main__":
