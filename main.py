@@ -4,10 +4,11 @@ from pybit.unified_trading import HTTP
 
 app = Flask(__name__)
 
-# Conectar à API da Bybit com variáveis de ambiente
+# Ler as chaves do ambiente
 api_key = os.getenv("BYBIT_API_KEY")
 api_secret = os.getenv("BYBIT_API_SECRET")
 
+# Criar sessão com a API da Bybit
 session = HTTP(
     api_key=api_key,
     api_secret=api_secret,
@@ -37,7 +38,8 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
 
-# Lista de pares monitorados (para futura análise de sinais)\npares = [
+# Lista de pares monitorados
+pares = [
     "BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "MATICUSDT",
     "AVAXUSDT", "LINKUSDT", "TONUSDT", "FETUSDT", "ADAUSDT",
     "RNDRUSDT", "SHIBUSDT"
