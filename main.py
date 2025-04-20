@@ -19,7 +19,7 @@ session = HTTP(
 
 @app.route("/")
 def home():
-    return "✅ SukachBot CRYPTO (TESTE 5+ sinais) | 10 USDT | 10x | TP 3% | SL 1.5%"
+    return "✅ SukachBot CRYPTO (TESTE 5+ sinais) | 10 USDT | 10x | TP 3% | SL 1.5% | Qty segura"
 
 @app.route("/saldo")
 def saldo():
@@ -75,7 +75,7 @@ def contar_sinais(velas):
     ]
     return sum(condicoes)
 
-# ✅ 20 pares (PEPEUSDT removido)
+# ✅ Lista atualizada de 20 pares (PEPE removido)
 
 pares = [
     "BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "MATICUSDT",
@@ -120,14 +120,17 @@ def monitorar_mercado():
                 total_sinais = contar_sinais(velas)
 
                 if total_sinais >= 5:
-                    entradas += 1
                     preco_atual = velas[-1]["close"]
                     tp = round(preco_atual * 1.03, 4)
                     sl = round(preco_atual * 0.985, 4)
                     usdt_alvo = 10
                     alavancagem = 10
-                    qty = round((usdt_alvo * alavancagem) / preco_atual, 3)
 
+                    # ✅ Arredondamento seguro para evitar erro
+                    raw_qty = (usdt_alvo * alavancagem) / preco_atual
+                    qty = round(raw_qty, 1)
+
+                    entradas += 1
                     print(f"✅ Entrada TESTE: {par} com {total_sinais}/12 sinais")
                     print(f"🚀 Ordem: {par} | Qty: {qty} | TP: {tp} | SL: {sl}")
 
