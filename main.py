@@ -1,149 +1,107 @@
-
-from flask import Flask
 import os
 import time
-import random
 import threading
 import requests
+from flask import Flask
 from pybit.unified_trading import HTTP
 
 app = Flask(__name__)
 
-# Conectar à API da Bybit com variáveis de ambiente
-api_key = os.getenv("BYBIT_API_KEY")
-api_secret = os.getenv("BYBIT_API_SECRET")
+# --- Configurações principais ---
+BYBIT_API_KEY = os.getenv("BYBIT_API_KEY")
+BYBIT_API_SECRET = os.getenv("BYBIT_API_SECRET")
+session = HTTP(api_key=BYBIT_API_KEY, api_secret=BYBIT_API_SECRET, testnet=False)
 
-session = HTTP(
-    api_key=api_key,
-    api_secret=api_secret,
-    testnet=False
-)
+# --- Telegram ---
+BOT_TOKEN = "7830564079:AAER2NNtWfoF0Nsv94Z_WXdPAXQbdsKdcmk"
+CHAT_ID = "1407960941"
 
-# Função para enviar mensagens para o Telegram
 def enviar_telegram_mensagem(mensagem):
-    bot_token = "7830564079:AAER2NNtWfoF0Nsv94Z_WXdPAXQbdsKdcmk"
-    chat_id = "1407960941"
-    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-
-    payload = {
-        "chat_id": chat_id,
-        "text": mensagem,
-        "parse_mode": "Markdown"
-    }
-
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    payload = {"chat_id": CHAT_ID, "text": mensagem, "parse_mode": "Markdown"}
     try:
-        response = requests.post(url, data=payload)
-        if response.status_code != 200:
-            print("Erro ao enviar mensagem para Telegram:", response.text)
+        r = requests.post(url, data=payload)
+        if r.status_code != 200:
+            print("Erro ao enviar para Telegram:", r.text)
     except Exception as e:
-        print("Exceção ao enviar mensagem:", e)
+        print("Erro Telegram:", e)
 
-@app.route("/")
-def home():
-    return "SukachBot CRYPTO online e pronto para enviar sinais! 🚀"
-
-@app.route("/saldo")
-def saldo():
-    try:
-        response = session.get_wallet_balance(accountType="UNIFIED")
-        coins = response["result"]["list"][0]["coin"]
-        output = "<h2>Saldo Atual:</h2><ul>"
-        for coin in coins:
-            value = coin.get("availableToWithdraw", "0")
-            try:
-                balance = float(value)
-                if balance > 0:
-                    output += f"<li>{coin['coin']}: {balance}</li>"
-            except ValueError:
-                continue
-        output += "</ul>"
-        return output or "Sem saldo disponível."
-    except Exception as e:
-        return f"Erro ao obter saldo: {str(e)}"
-
-# Lista de pares monitorados
+# --- Lista de pares ---
 pares = [
     "BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "MATICUSDT",
     "AVAXUSDT", "LINKUSDT", "TONUSDT", "FETUSDT", "ADAUSDT",
-    "RNDRUSDT", "SHIBUSDT", "XRPUSDT", "OPUSDT", "ARBUSDT",
-    "LDOUSDT", "NEARUSDT", "APTUSDT", "FILUSDT", "SUIUSDT",
-    "BNBUSDT"
+    "RNDRUSDT", "SHIBUSDT", "XRPUSDT", "NEARUSDT", "FILUSDT",
+    "LDOUSDT", "OPUSDT", "ARBUSDT", "APTUSDT", "BNBUSDT",
+    "SUIUSDT"
 ]
 
-contador = 0
-
+# --- Função principal ---
 def monitorar_mercado():
-    global contador
     while True:
-        try:
-            for par in pares:
+        for par in pares:
+            try:
                 print(f"🔍 Verificando {par}...")
 
-                candle = session.get_kline(
-                    category="linear",
-                    symbol=par,
-                    interval="1",
-                    limit=2
-                )["result"]["list"]
+                # Simula contagem de sinais alinhados (substituir por lógica real)
+                sinais_alinhados = checar_sinais(par)
 
-                if not candle or len(candle) < 2:
-                    print(f"⚠️ {par}: dados insuficientes. Pulando...")
-                    continue
-
-                ultima = candle[-1]
-                preco_abertura = float(ultima[1])
-                preco_fechamento = float(ultima[4])
-                volume = float(ultima[5])
-
-                sinais = random.randint(3, 12)
-
-                if sinais == 5:
-                    print(f"⚠️ Alerta: {par} com 5/12 sinais = quase entrada!")
-
-                if sinais >= 6:
-                    preco_atual = preco_fechamento
-                    usdt_entrada = 10
+                if sinais_alinhados == 12:
+                    preco_atual = pegar_preco_atual(par)
+                    valor_usdt = 10
                     alavancagem = 10
-                    qty = round((usdt_entrada * alavancagem) / preco_atual, 3)
+                    quantidade = round((valor_usdt * alavancagem) / preco_atual, 3)
 
-                    take_profit = round(preco_atual * 1.03, 4)
-                    stop_loss = round(preco_atual * 0.985, 4)
+                    tp = round(preco_atual * 1.03, 3)
+                    sl = round(preco_atual * 0.985, 3)
 
                     session.place_order(
                         category="linear",
                         symbol=par,
                         side="Buy",
                         orderType="Market",
-                        qty=qty,
-                        takeProfit=take_profit,
-                        stopLoss=stop_loss,
+                        qty=quantidade,
+                        takeProfit=tp,
+                        stopLoss=sl,
                         leverage=alavancagem
                     )
 
-                    print(f"✅ Entrada REAL executada em {par} com {sinais}/12 sinais")
-
-                    mensagem = (
-                        f"🚀 *ENTRADA EXECUTADA*\n"
-                        f"Par: {par}\n"
-                        f"Direção: BUY\n"
-                        f"Preço de Entrada: {preco_atual}\n"
-                        f"Quantidade: {qty}\n"
-                        f"TP: {take_profit} | SL: {stop_loss}\n"
-                        f"Alavancagem: {alavancagem}x"
+                    msg = (
+                        f"\u2728 *ENTRADA EXECUTADA*
+Par: {par}
+Sinais: {sinais_alinhados}/12
+Entrada: {preco_atual}
+Qty: {quantidade}
+TP: {tp} | SL: {sl}
+Alavancagem: {alavancagem}x"
                     )
-                    enviar_telegram_mensagem(mensagem)
+                    print(msg)
+                    enviar_telegram_mensagem(msg)
+                elif sinais_alinhados >= 5:
+                    print(f"⚠️ Alerta: {par} com {sinais_alinhados}/12 sinais - quase entrada!")
+            except Exception as e:
+                print(f"Erro com {par}: {e}")
 
-            contador += 1
-            if contador >= 60:
-                print(f"✅ Bot ativo: {len(pares)} pares verificados!")
-                contador = 0
+            time.sleep(0.3)  # evitar excesso de requisições
 
-            time.sleep(1)
+        print("\u23F3 Aguardando novo ciclo...")
+        time.sleep(5)
 
-        except Exception as e:
-            print(f"⚠️ Erro: {str(e)}")
-            time.sleep(2)
+# --- Funções auxiliares ---
+def pegar_preco_atual(par):
+    kline = session.get_kline(category="linear", symbol=par, interval=1, limit=1)
+    return float(kline["result"]["list"][0][4])  # último preço de fechamento
 
+def checar_sinais(par):
+    # Simula os sinais (mudar para tua lógica de indicadores reais)
+    import random
+    return random.randint(3, 12)
+
+# --- Rota web para verificar status ---
+@app.route("/")
+def home():
+    return "SukachBot CRYPTO ONLINE e a operar com entradas de 12 sinais! 💼"
+
+# --- Inicializa o bot ---
 if __name__ == "__main__":
     threading.Thread(target=monitorar_mercado).start()
     port = int(os.environ.get("PORT", 8080))
