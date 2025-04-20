@@ -48,4 +48,4 @@ pares = [
     "RNDRUSDT", "SHIBUSDT"
 ]
 
-]
+
