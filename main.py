@@ -1,10 +1,4 @@
-# ✅ SukachBot CRYPTO - Código limpo e funcional atualizado por programador com 40 anos de experiência 💻
-# Funcionalidades incluídas:
-# - Stop Loss funcional (-1.5%) ✅
-# - Take Profit (+3%) ✅
-# - Entradas com 1 USDT e alavancagem 2x ✅
-# - Entrada com 5-12 sinais ✅
-# - Alertas no Telegram com emojis ✅
+# ✅ SukachBot CRYPTO - Código final com SL fixo e alertas Telegram 🚀
 
 import os
 import time
@@ -34,13 +28,17 @@ CHAT_ID = "1407960941"
 
 def enviar_telegram_mensagem(mensagem):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": mensagem, "parse_mode": "Markdown"}
+    payload = {
+        "chat_id": CHAT_ID,
+        "text": mensagem,
+        "parse_mode": "Markdown"
+    }
     try:
         requests.post(url, data=payload)
     except Exception as e:
         print("Erro ao enviar mensagem para Telegram:", e)
 
-# --- FUNÇÃO DE EXECUÇÃO DE ORDEM ---
+# --- EXECUTAR ORDEM COM SL E TP CORRETOS ---
 def executar_ordem(par, preco_entrada, direcao, preco_atual):
     try:
         if not preco_entrada:
@@ -54,8 +52,6 @@ def executar_ordem(par, preco_entrada, direcao, preco_atual):
             sl = preco_entrada * (1 + STOP_LOSS_PORCENTAGEM)
 
         quantidade = round((VALOR_ENTRADA_USDT * ALAVANCAGEM) / preco_entrada, 3)
-
-        print(f"Executando {direcao.upper()} em {par} | Entrada: {preco_entrada:.4f} | TP: {tp:.4f} | SL: {sl:.4f}")
 
         session.place_order(
             category="linear",
@@ -71,13 +67,14 @@ def executar_ordem(par, preco_entrada, direcao, preco_atual):
 
         hora = datetime.utcnow().strftime("%H:%M:%S")
         mensagem = (
-            f"🚀 *ENTRADA EXECUTADA!*\n"
-            f"📊 *Par:* `{par}`\n"
-            f"📈 *Direção:* `{direcao.upper()}`\n"
-            f"💵 *Preço:* `{preco_entrada:.4f}`\n"
-            f"🎯 *TP:* `{tp:.4f}` | 🛡️ *SL:* `{sl:.4f}`\n"
-            f"💰 *Qtd:* `{quantidade}` | ⚖️ *Alavancagem:* `{ALAVANCAGEM}x`\n"
-            f"⏱️ *Hora:* `{hora}`"
+            f"📢 *ENTRADA EXECUTADA!*
+"
+            f"\n🔸 *Par:* `{par}`"
+            f"\n📈 *Direção:* `{direcao.upper()}`"
+            f"\n💰 *Preço:* `{preco_entrada:.4f}`"
+            f"\n🎯 *TP:* `{tp:.4f}` | 🛡️ *SL:* `{sl:.4f}`"
+            f"\n📊 *Qtd:* `{quantidade}` | ⚖️ *Alav.:* `{ALAVANCAGEM}x`"
+            f"\n⏱️ *Hora:* `{hora}`"
         )
         enviar_telegram_mensagem(mensagem)
 
@@ -85,6 +82,6 @@ def executar_ordem(par, preco_entrada, direcao, preco_atual):
         print("Erro ao executar ordem:", e)
         enviar_telegram_mensagem(f"❌ Erro ao executar ordem em {par}: {str(e)}")
 
-# --- EXEMPLO DE CHAMADA DE TESTE ---
+# --- EXEMPLO DE USO ---
 # executar_ordem("LINKUSDT", preco_entrada=13.05, direcao="buy", preco_atual=13.05)
 
