@@ -1,6 +1,8 @@
 from flask import Flask
 import os
 import threading
+import time
+import random
 from pybit.unified_trading import HTTP
 
 app = Flask(__name__)
@@ -14,6 +16,13 @@ session = HTTP(
     api_secret=api_secret,
     testnet=False
 )
+
+# Lista de pares monitorados
+pares = [
+    "BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "MATICUSDT",
+    "AVAXUSDT", "LINKUSDT", "TONUSDT", "FETUSDT", "ADAUSDT",
+    "RNDRUSDT", "SHIBUSDT"
+]
 
 @app.route("/")
 def home():
@@ -37,11 +46,8 @@ def saldo():
         return output or "Sem saldo disponível."
     except Exception as e:
         return f"Erro ao obter saldo: {str(e)}"
-import time
-import random
-import threading
 
-
+# Função principal do bot
 def monitorar_mercado():
     while True:
         try:
@@ -79,22 +85,9 @@ def monitorar_mercado():
         except Exception as e:
             print(f"⚠️ Erro ao analisar {par}: {str(e)}")
             time.sleep(2)
-if __name__ == "__main__":
-    # Iniciar o loop automático em background
-    threading.Thread(target=monitorar_mercado).start()
 
-    # Iniciar o servidor Flask
+# Executar o Flask e o bot em paralelo
+if __name__ == "__main__":
+    threading.Thread(target=monitorar_mercado).start()
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
-
-# Lista de pares monitorados
-pares = [
-    "BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "MATICUSDT",
-    "AVAXUSDT", "LINKUSDT", "TONUSDT", "FETUSDT", "ADAUSDT",
-    "RNDRUSDT", "SHIBUSDT"
-]
-
-time.sleep(2)
-
-# Iniciar o loop automático em background
-threading.Thread(target=monitorar_mercado).start()
