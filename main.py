@@ -14,7 +14,7 @@ api_secret = os.getenv("BYBIT_API_SECRET")
 
 session = HTTP(api_key=api_key, api_secret=api_secret, testnet=False)
 
-# ✅ Função para enviar mensagem para o Telegram
+# ✅ Função para enviar mensagem para Telegram
 def enviar_telegram_mensagem(mensagem):
     bot_token = "7830564079:AAER2NNtWfoF0Nsv94Z_WXdPAXQbdsKdcmk"
     chat_id = "1407960941"
@@ -33,7 +33,7 @@ def enviar_telegram_mensagem(mensagem):
 
 @app.route("/")
 def home():
-    return "✅ SukachBot CRYPTO ativo com SL/TP precisos + Telegram ✅"
+    return "✅ SukachBot CRYPTO ativo com Telegram + SL/TP baseados no preço real!"
 
 def calcular_rsi(fechamentos, periodo=14):
     diffs = np.diff(fechamentos)
@@ -70,11 +70,12 @@ def contar_sinais(velas):
     ]
     return sum(condicoes)
 
+# ✅ Lista de pares sem o 1000SHIBUSDT
 pares = [
     "BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "MATICUSDT",
     "AVAXUSDT", "LINKUSDT", "TONUSDT", "FETUSDT", "ADAUSDT",
     "RNDRUSDT", "BNBUSDT", "XRPUSDT", "OPUSDT", "APTUSDT",
-    "NEARUSDT", "SUIUSDT", "ARBUSDT", "LDOUSDT", "FILUSDT", "1000SHIBUSDT"
+    "NEARUSDT", "SUIUSDT", "ARBUSDT", "LDOUSDT", "FILUSDT"
 ]
 
 def monitorar_mercado():
