@@ -1,5 +1,4 @@
 import os
-import time
 import requests
 from pybit.unified_trading import HTTP
 from datetime import datetime
@@ -30,7 +29,6 @@ CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 if not BOT_TOKEN or not CHAT_ID:
     raise ValueError("Erro: O BOT_TOKEN ou CHAT_ID do Telegram não estão configurados corretamente.")
 
-# --- Função para enviar mensagens ao Telegram ---
 def enviar_telegram_mensagem(mensagem):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": mensagem, "parse_mode": "Markdown"}
@@ -42,7 +40,7 @@ def enviar_telegram_mensagem(mensagem):
         print("Erro ao enviar mensagem para Telegram:", e)
         raise
 
-# --- Lógica para cálculo de TP e SL ---
+# --- Lógica de Stop Loss e Take Profit ---
 def calcular_tp_sl(preco_entrada, direcao):
     try:
         if direcao.lower() == "buy":
@@ -58,7 +56,7 @@ def calcular_tp_sl(preco_entrada, direcao):
         print("Erro ao calcular TP e SL:", e)
         raise
 
-# --- Função para executar ordem na Bybit ---
+# --- Executar Ordem na Bybit ---
 def executar_ordem(par, preco_entrada, direcao, preco_atual):
     try:
         tp, sl = calcular_tp_sl(preco_entrada if preco_entrada else preco_atual, direcao)
@@ -96,5 +94,6 @@ def executar_ordem(par, preco_entrada, direcao, preco_atual):
     except Exception as e:
         print("Erro ao executar ordem:", e)
         enviar_telegram_mensagem(f"❌ Erro ao executar ordem em {par}: {str(e)}")
+
 
 
