@@ -25,9 +25,13 @@ def saldo():
         coins = response["result"]["list"][0]["coin"]
         output = "<h2>Saldo Atual:</h2><ul>"
         for coin in coins:
-            balance = float(coin["availableToWithdraw"])
-            if balance > 0:
-                output += f"<li>{coin['coin']}: {balance}</li>"
+            value = coin.get("availableToWithdraw", "0")
+try:
+    balance = float(value)
+    if balance > 0:
+        output += f"<li>{coin['coin']}: {balance}</li>"
+except ValueError:
+    pass  # ignora se não for número
         output += "</ul>"
         return output or "Sem saldo disponível."
     except Exception as e:
