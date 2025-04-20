@@ -26,12 +26,12 @@ def saldo():
         output = "<h2>Saldo Atual:</h2><ul>"
         for coin in coins:
             value = coin.get("availableToWithdraw", "0")
-try:
-    balance = float(value)
-    if balance > 0:
-        output += f"<li>{coin['coin']}: {balance}</li>"
-except ValueError:
-    pass  # ignora se não for número
+            try:
+                balance = float(value)
+                if balance > 0:
+                    output += f"<li>{coin['coin']}: {balance}</li>"
+            except ValueError:
+                continue
         output += "</ul>"
         return output or "Sem saldo disponível."
     except Exception as e:
@@ -41,9 +41,11 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
 
-# Lista de pares monitorados (exemplo para Bybit)
+# Lista de pares monitorados
 pares = [
     "BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "MATICUSDT",
     "AVAXUSDT", "LINKUSDT", "TONUSDT", "FETUSDT", "ADAUSDT",
     "RNDRUSDT", "SHIBUSDT"
+]
+
 ]
