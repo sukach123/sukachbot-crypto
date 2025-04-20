@@ -66,16 +66,15 @@ def executar_ordem(par, preco_entrada, direcao, preco_atual):
         )
 
         hora = datetime.utcnow().strftime("%H:%M:%S")
-        mensagem = (
-            f"📢 *ENTRADA EXECUTADA!*
-"
-            f"\n🔸 *Par:* `{par}`"
-            f"\n📈 *Direção:* `{direcao.upper()}`"
-            f"\n💰 *Preço:* `{preco_entrada:.4f}`"
-            f"\n🎯 *TP:* `{tp:.4f}` | 🛡️ *SL:* `{sl:.4f}`"
-            f"\n📊 *Qtd:* `{quantidade}` | ⚖️ *Alav.:* `{ALAVANCAGEM}x`"
-            f"\n⏱️ *Hora:* `{hora}`"
-        )
+       mensagem = (
+    f"📢 *ENTRADA EXECUTADA!*\n"
+    f"📊 *Par:* `{par}`\n"
+    f"📈 *Direção:* `{direcao.upper()}`\n"
+    f"💵 *Preço:* `{preco_entrada:.4f}`\n"
+    f"🎯 *TP:* `{tp:.4f}` | 🛡️ *SL:* `{sl:.4f}`\n"
+    f"💰 *Qtd:* `{quantidade}` | ⚖️ *Alavancagem:* `{ALAVANCAGEM}x`\n"
+    f"⏱️ *Hora:* `{hora}`"
+)
         enviar_telegram_mensagem(mensagem)
 
     except Exception as e:
