@@ -19,7 +19,7 @@ session = HTTP(
 
 @app.route("/")
 def home():
-    return "✅ SukachBot CRYPTO ativo com 21 pares, 10 USDT, 6x, TP 3%, SL 1.5%, Log 60s"
+    return "✅ SukachBot CRYPTO ativo | 10 USDT | 10x | TP 3% | SL 1.5% | Confluência 6+"
 
 @app.route("/saldo")
 def saldo():
@@ -75,14 +75,13 @@ def contar_sinais(velas):
     ]
     return sum(condicoes)
 
-# ✅ Lista de 21 pares
+# ✅ 21 pares (PEPEUSDT removido)
 
 pares = [
     "BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "MATICUSDT",
     "AVAXUSDT", "LINKUSDT", "TONUSDT", "FETUSDT", "ADAUSDT",
     "RNDRUSDT", "BNBUSDT", "XRPUSDT", "OPUSDT", "APTUSDT",
-    "NEARUSDT", "SUIUSDT", "ARBUSDT", "LDOUSDT", "FILUSDT",
-    "PEPEUSDT"
+    "NEARUSDT", "SUIUSDT", "ARBUSDT", "LDOUSDT", "FILUSDT"
 ]
 
 def monitorar_mercado():
@@ -131,7 +130,7 @@ def monitorar_mercado():
                     tp = round(preco_atual * 1.03, 4)
                     sl = round(preco_atual * 0.985, 4)
                     usdt_alvo = 10
-                    alavancagem = 6
+                    alavancagem = 10
                     qty = round((usdt_alvo * alavancagem) / preco_atual, 3)
 
                     print(f"✅ Entrada válida em {par} com {total_sinais}/12 sinais")
@@ -163,6 +162,10 @@ def monitorar_mercado():
             print(f"⚠️ Erro ao monitorar mercado: {str(e)}")
             time.sleep(2)
 
+if __name__ == "__main__":
+    threading.Thread(target=monitorar_mercado).start()
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
 if __name__ == "__main__":
     threading.Thread(target=monitorar_mercado).start()
     port = int(os.environ.get("PORT", 8080))
