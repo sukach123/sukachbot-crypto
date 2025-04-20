@@ -14,7 +14,6 @@ api_secret = os.getenv("BYBIT_API_SECRET")
 
 session = HTTP(api_key=api_key, api_secret=api_secret, testnet=False)
 
-# ✅ Função para enviar mensagem para Telegram
 def enviar_telegram_mensagem(mensagem):
     bot_token = "7830564079:AAER2NNtWfoF0Nsv94Z_WXdPAXQbdsKdcmk"
     chat_id = "1407960941"
@@ -70,7 +69,6 @@ def contar_sinais(velas):
     ]
     return sum(condicoes)
 
-# ✅ Lista de pares sem o 1000SHIBUSDT
 pares = [
     "BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "MATICUSDT",
     "AVAXUSDT", "LINKUSDT", "TONUSDT", "FETUSDT", "ADAUSDT",
@@ -130,28 +128,29 @@ def monitorar_mercado():
                     )
 
                     if ordem["retCode"] == 0:
-                        preco_exec = float(ordem["result"]["orderPrice"]) if "orderPrice" in ordem["result"] else preco_atual
+                        preco_exec = float(ordem["result"].get("orderPrice", preco_atual))
                         tp = round(preco_exec * 1.03, 4)
                         sl = round(preco_exec * 0.985, 4)
 
-                        session.set_trading_stop(
+                        stop = session.set_trading_stop(
                             category="linear",
                             symbol=par,
                             takeProfit=tp,
                             stopLoss=sl
                         )
 
+                        print(f"📉 SL/TP aplicado → TP: {tp}, SL: {sl}")
+
                         entradas += 1
                         mensagem = (
-                            f"*🚀 ENTRADA EXECUTADA*\n"
-                            f"Par: {par}\n"
-                            f"Qtd: {qty}\n"
-                            f"Preço entrada: {preco_exec}\n"
-                            f"🎯 TP: {tp} | 🛡️ SL: {sl}\n"
-                            f"Sinais: {total_sinais}/12\n"
-                            f"Alavancagem: 10x"
+                            f"*🚀 ENTRADA EXECUTADA*
+Par: {par}
+Qtd: {qty}
+Preço entrada: {preco_exec}
+🎯 TP: {tp} | 🛡️ SL: {sl}
+Sinais: {total_sinais}/12
+Alavancagem: 10x"
                         )
-                        print(mensagem)
                         enviar_telegram_mensagem(mensagem)
 
                 time.sleep(0.1)
