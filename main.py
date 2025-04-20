@@ -4,10 +4,10 @@ import time
 import random
 import threading
 from pybit.unified_trading import HTTP
+import numpy as np
 
 app = Flask(__name__)
 
-# Conectar à API da Bybit com variáveis de ambiente
 api_key = os.getenv("BYBIT_API_KEY")
 api_secret = os.getenv("BYBIT_API_SECRET")
 
@@ -19,7 +19,7 @@ session = HTTP(
 
 @app.route("/")
 def home():
-    return "SukachBot CRYPTO online e pronto para enviar sinais! 🚀"
+    return "SukachBot CRYPTO online com Fibonacci + RSI/EMA/MACD 🚀"
 
 @app.route("/saldo")
 def saldo():
@@ -40,41 +40,73 @@ def saldo():
     except Exception as e:
         return f"Erro ao obter saldo: {str(e)}"
 
-# ✅ Função Fibonacci
 def calcular_fibonacci_tp_sl(velas, direcao="compra"):
     if len(velas) < 5:
         return None
 
-    # Extrair as últimas 5 velas
     ultimas = velas[-5:]
-
     swing_high = max(ultimas, key=lambda x: x['high'])['high']
     swing_low = min(ultimas, key=lambda x: x['low'])['low']
 
     if direcao == "compra":
         fib_618 = swing_high - (swing_high - swing_low) * 0.618
         tp1 = swing_high + (swing_high - swing_low) * 1.272
-        tp2 = swing_high + (swing_high - swing_low) * 1.618
         sl = fib_618
     else:
         fib_618 = swing_low + (swing_high - swing_low) * 0.618
         tp1 = swing_low - (swing_high - swing_low) * 1.272
-        tp2 = swing_low - (swing_high - swing_low) * 1.618
         sl = fib_618
 
     return {
-        "tp_1.272": round(tp1, 3),
-        "tp_1.618": round(tp2, 3),
-        "sl_fib_0.618": round(sl, 3),
-        "swing_high": swing_high,
-        "swing_low": swing_low
+        "tp": round(tp1, 3),
+        "sl": round(sl, 3)
     }
 
-# Lista de pares monitorados
+def calcular_rsi(fechamentos, periodo=14):
+    diffs = np.diff(fechamentos)
+    ganhos = np.where(diffs > 0, diffs, 0)
+    perdas = np.where(diffs < 0, -diffs, 0)
+    media_ganhos = np.mean(ganhos[-periodo:])
+    media_perdas = np.mean(perdas[-periodo:])
+    rs = media_ganhos / media_perdas if media_perdas != 0 else 0
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
+
+def verificar_confluencia(velas):
+    if len(velas) < 21:
+        return False
+
+    fechamentos = [v["close"] for v in velas]
+    closes = np.array(fechamentos)
+
+    ema9 = np.mean(closes[-9:])
+    ema21 = np.mean(closes[-21:])
+    rsi = calcular_rsi(closes)
+
+    macd_line = np.mean(closes[-12:]) - np.mean(closes[-26:])
+    signal_line = np.mean(closes[-9:])
+    macd_ok = macd_line > signal_line
+
+    ultima = velas[-1]
+    candle_verde = ultima["close"] > ultima["open"]
+    volume_ok = ultima["volume"] > 1000
+    preco_acima_media = ultima["close"] > np.mean(closes)
+
+    condicoes = [
+        rsi < 70 and rsi > 50,
+        ema9 > ema21,
+        macd_ok,
+        candle_verde,
+        volume_ok,
+        preco_acima_media
+    ]
+
+    return sum(condicoes) >= 6
+
 pares = [
     "BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "MATICUSDT",
     "AVAXUSDT", "LINKUSDT", "TONUSDT", "FETUSDT", "ADAUSDT",
-    "RNDRUSDT", "SHIBUSDT"
+    "RNDRUSDT", "1000SHIBUSDT"
 ]
 
 def monitorar_mercado():
@@ -87,8 +119,13 @@ def monitorar_mercado():
                 category="linear",
                 symbol=par,
                 interval="1",
-                limit=20
+                limit=50
             )["result"]["list"]
+
+            if not velas_raw or len(velas_raw) < 30:
+                print(f"⚠️ {par}: dados insuficientes. Pulando...")
+                time.sleep(1)
+                continue
 
             velas = []
             for v in velas_raw:
@@ -101,28 +138,18 @@ def monitorar_mercado():
                     "volume": float(v[5])
                 })
 
-            ultima = velas[-1]
-            preco_abertura = ultima["open"]
-            preco_fechamento = ultima["close"]
-            volume = ultima["volume"]
+            if verificar_confluencia(velas):
+                print(f"✅ Confluência detectada em {par} (RSI, EMA, MACD...)")
 
-            if preco_fechamento > preco_abertura and volume > 1000:
-                print(f"✅ Sinal de COMPRA detectado em {par}")
-
-                preco_atual = preco_fechamento
-                usdt_alvo = 5
-                alavancagem = 4
-                qty = round((usdt_alvo * alavancagem) / preco_atual, 3)
-
+                preco_atual = velas[-1]["close"]
                 fib = calcular_fibonacci_tp_sl(velas, direcao="compra")
-
                 if not fib:
-                    print("❌ Não foi possível calcular Fibonacci. Pulando.")
-                    time.sleep(1)
+                    print("❌ Fibonacci falhou.")
                     continue
 
-                take_profit = fib["tp_1.272"]
-                stop_loss = fib["sl_fib_0.618"]
+                usdt_alvo = 5
+                alavancagem = 4
+                qty = round((usdt_alvo * alavancagem) / preco_atual, 2)
 
                 session.place_order(
                     category="linear",
@@ -130,12 +157,12 @@ def monitorar_mercado():
                     side="Buy",
                     orderType="Market",
                     qty=qty,
-                    takeProfit=take_profit,
-                    stopLoss=stop_loss,
+                    takeProfit=fib["tp"],
+                    stopLoss=fib["sl"],
                     leverage=alavancagem
                 )
 
-                print(f"🚀 Ordem enviada: {par}, qty: {qty}, TP: {take_profit}, SL: {stop_loss}, alavancagem: {alavancagem}x")
+                print(f"🚀 Ordem enviada: {par} | Qty: {qty} | TP: {fib['tp']} | SL: {fib['sl']}")
 
             time.sleep(1)
 
