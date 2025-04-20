@@ -1,8 +1,8 @@
 from flask import Flask
 import os
-import threading
 import time
 import random
+import threading
 from pybit.unified_trading import HTTP
 
 app = Flask(__name__)
@@ -16,13 +16,6 @@ session = HTTP(
     api_secret=api_secret,
     testnet=False
 )
-
-# Lista de pares monitorados
-pares = [
-    "BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "MATICUSDT",
-    "AVAXUSDT", "LINKUSDT", "TONUSDT", "FETUSDT", "ADAUSDT",
-    "RNDRUSDT", "SHIBUSDT"
-]
 
 @app.route("/")
 def home():
@@ -47,7 +40,13 @@ def saldo():
     except Exception as e:
         return f"Erro ao obter saldo: {str(e)}"
 
-# Função principal do bot
+# Lista de pares monitorados
+pares = [
+    "BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "MATICUSDT",
+    "AVAXUSDT", "LINKUSDT", "TONUSDT", "FETUSDT", "ADAUSDT",
+    "RNDRUSDT", "SHIBUSDT"
+]
+
 def monitorar_mercado():
     while True:
         try:
@@ -69,16 +68,26 @@ def monitorar_mercado():
             if preco_fechamento > preco_abertura and volume > 1000:
                 print(f"✅ Sinal de COMPRA detectado em {par}")
 
+                preco_atual = preco_fechamento
+                usdt_alvo = 5
+                alavancagem = 4
+                qty = round((usdt_alvo * alavancagem) / preco_atual, 3)
+
+                take_profit = round(preco_atual * 1.03, 3)  # +3% lucro
+                stop_loss = round(preco_atual * 0.99, 3)    # -1% perda
+
                 session.place_order(
                     category="linear",
                     symbol=par,
                     side="Buy",
                     orderType="Market",
-                    qty=2,
-                    leverage=2
+                    qty=qty,
+                    takeProfit=take_profit,
+                    stopLoss=stop_loss,
+                    leverage=alavancagem
                 )
 
-                print(f"🚀 Ordem enviada: {par}, valor: 2 USDT, alavancagem: 2x")
+                print(f"🚀 Ordem enviada: {par}, valor máximo: 5 USDT, qty: {qty}, TP: {take_profit}, SL: {stop_loss}, alavancagem: {alavancagem}x")
 
             time.sleep(1)
 
@@ -86,8 +95,8 @@ def monitorar_mercado():
             print(f"⚠️ Erro ao analisar {par}: {str(e)}")
             time.sleep(2)
 
-# Executar o Flask e o bot em paralelo
 if __name__ == "__main__":
     threading.Thread(target=monitorar_mercado).start()
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
+
