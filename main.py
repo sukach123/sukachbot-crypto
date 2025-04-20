@@ -1,3 +1,9 @@
+import os
+import time
+import requests
+from pybit.unified_trading import HTTP
+from datetime import datetime
+
 # --- CONFIGURAÇÕES GERAIS ---
 BYBIT_API_KEY = os.getenv("BYBIT_API_KEY")
 BYBIT_API_SECRET = os.getenv("BYBIT_API_SECRET")
@@ -11,6 +17,12 @@ session = HTTP(
     testnet=False
 )
 
+# --- PARÂMETROS DO BOT ---
+VALOR_ENTRADA_USDT = 1
+ALAVANCAGEM = 2
+TAKE_PROFIT_PORCENTAGEM = 0.03  # 3%
+STOP_LOSS_PORCENTAGEM = 0.015   # 1.5%
+
 # --- TELEGRAM ---
 BOT_TOKEN = "7830564079:AAER2NNtWfoF0Nsv94Z_WXdPAXQbdsKdcmk"
 CHAT_ID = "1407960941"
@@ -18,7 +30,6 @@ CHAT_ID = "1407960941"
 if not BOT_TOKEN or not CHAT_ID:
     raise ValueError("Erro: O BOT_TOKEN ou CHAT_ID do Telegram não está configurado corretamente.")
 
-# --- ENVIO DE MENSAGENS PARA O TELEGRAM ---
 def enviar_telegram_mensagem(mensagem):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": mensagem, "parse_mode": "Markdown"}
