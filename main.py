@@ -23,7 +23,7 @@ ALAVANCAGEM = 2
 TAKE_PROFIT_PORCENTAGEM = 0.03  # 3%
 STOP_LOSS_PORCENTAGEM = 0.015   # 1.5%
 
-# --- FUNÇÃO PARA ENVIAR MENSAGEM TELEGRAM ---
+# --- TELEGRAM ---
 BOT_TOKEN = "7830564079:AAER2NNtWfoF0Nsv94Z_WXdPAXQbdsKdcmk"
 CHAT_ID = "1407960941"
 
@@ -35,10 +35,9 @@ def enviar_telegram_mensagem(mensagem):
     except Exception as e:
         print("Erro ao enviar mensagem para Telegram:", e)
 
-# --- FUNÇÃO PARA EXECUTAR ORDEM COM SL CORRETO ---
+# --- EXECUTAR ORDEM ---
 def executar_ordem(par, preco_entrada, direcao, preco_atual):
     try:
-        # Calcular SL e TP
         if direcao.lower() == "buy":
             tp = preco_entrada * (1 + TAKE_PROFIT_PORCENTAGEM)
             sl = preco_entrada * (1 - STOP_LOSS_PORCENTAGEM)
@@ -49,7 +48,6 @@ def executar_ordem(par, preco_entrada, direcao, preco_atual):
         if not preco_entrada:
             preco_entrada = preco_atual
 
-        # Calcular quantidade com base na alavancagem e preço
         quantidade = round((VALOR_ENTRADA_USDT * ALAVANCAGEM) / preco_entrada, 3)
 
         print(f"Executando ordem {direcao.upper()} em {par} | Entrada: {preco_entrada:.4f} | TP: {tp:.4f} | SL: {sl:.4f}")
@@ -68,18 +66,12 @@ def executar_ordem(par, preco_entrada, direcao, preco_atual):
 
         hora = datetime.utcnow().strftime("%H:%M:%S")
         mensagem = (
-            f"🚀 *ENTRADA EXECUTADA!*
-"
-            f"📊 *Par:* `{par}`
-"
-            f"📈 *Direção:* `{direcao.upper()}`
-"
-            f"💵 *Preço:* `{preco_entrada:.4f}`
-"
-            f"🎯 *TP:* `{tp:.4f}` | 🛡️ *SL:* `{sl:.4f}`
-"
-            f"💰 *Qtd:* `{quantidade}` | ⚖️ *Alavancagem:* `{ALAVANCAGEM}x`
-"
+            f"🚀 *ENTRADA EXECUTADA!*\n"
+            f"📊 *Par:* `{par}`\n"
+            f"📈 *Direção:* `{direcao.upper()}`\n"
+            f"💵 *Preço:* `{preco_entrada:.4f}`\n"
+            f"🎯 *TP:* `{tp:.4f}` | 🛡️ *SL:* `{sl:.4f}`\n"
+            f"💰 *Qtd:* `{quantidade}` | ⚖️ *Alavancagem:* `{ALAVANCAGEM}x`\n"
             f"⏱️ *Hora:* `{hora}`"
         )
         enviar_telegram_mensagem(mensagem)
@@ -88,5 +80,5 @@ def executar_ordem(par, preco_entrada, direcao, preco_atual):
         print("Erro ao executar ordem:", e)
         enviar_telegram_mensagem(f"❌ Erro ao executar ordem em {par}: {str(e)}")
 
-# --- EXEMPLO DE CHAMADA (podes remover isso no bot real) ---
+# --- EXEMPLO DE USO (remover em produção) ---
 # executar_ordem("LINKUSDT", preco_entrada=13.05, direcao="buy", preco_atual=13.05)
