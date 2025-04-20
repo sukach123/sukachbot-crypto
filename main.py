@@ -4,6 +4,7 @@ import time
 import threading
 from pybit.unified_trading import HTTP
 import numpy as np
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -19,7 +20,7 @@ session = HTTP(
 
 @app.route("/")
 def home():
-    return "✅ SukachBot CRYPTO online com Fibonacci e Alertas de 5 sinais"
+    return "✅ SukachBot CRYPTO ativo com 10 USDT | 6x | TP 3% | SL 1.5% | Log de verificação ligado"
 
 @app.route("/saldo")
 def saldo():
@@ -41,23 +42,6 @@ def saldo():
         return f"Erro ao obter saldo: {str(e)}"
 
 # === Indicadores ===
-
-def calcular_fibonacci_tp_sl(velas, direcao="compra"):
-    if len(velas) < 5:
-        return None
-    ultimas = velas[-5:]
-    swing_high = max(ultimas, key=lambda x: x['high'])['high']
-    swing_low = min(ultimas, key=lambda x: x['low'])['low']
-    if direcao == "compra":
-        fib_618 = swing_high - (swing_high - swing_low) * 0.618
-        tp1 = swing_high + (swing_high - swing_low) * 1.272
-        sl = fib_618
-    else:
-        return None
-    return {
-        "tp": round(tp1, 3),
-        "sl": round(sl, 3)
-    }
 
 def calcular_rsi(fechamentos, periodo=14):
     diffs = np.diff(fechamentos)
@@ -94,20 +78,26 @@ def contar_sinais(velas):
     ]
     return sum(condicoes)
 
-# === Lista de Pares ===
+# === Lista de Pares (1000SHIB removido) ===
 
 pares = [
     "BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "MATICUSDT",
     "AVAXUSDT", "LINKUSDT", "TONUSDT", "FETUSDT", "ADAUSDT",
-    "RNDRUSDT", "1000SHIBUSDT"
+    "RNDRUSDT"
 ]
 
-# === Monitorar Mercado ===
+# === Monitorar Mercado com Contador e Log por Minuto ===
 
 def monitorar_mercado():
+    verificados = 0
+    alertas = 0
+    entradas = 0
+    ultimo_log = time.time()
+
     while True:
         try:
             for par in pares:
+                verificados += 1
                 print(f"🔍 Verificando {par}...")
 
                 velas_raw = session.get_kline(
@@ -135,20 +125,20 @@ def monitorar_mercado():
                 total_sinais = contar_sinais(velas)
 
                 if total_sinais == 5:
+                    alertas += 1
                     print(f"⚠️ Alerta: {par} com 5/12 sinais — quase entrada!")
 
                 if total_sinais >= 6:
-                    print(f"✅ Entrada válida em {par} com {total_sinais}/12 sinais")
-
+                    entradas += 1
                     preco_atual = velas[-1]["close"]
-                    fib = calcular_fibonacci_tp_sl(velas, direcao="compra")
-                    if not fib:
-                        print("❌ Fibonacci falhou.")
-                        continue
+                    tp = round(preco_atual * 1.03, 4)
+                    sl = round(preco_atual * 0.985, 4)
+                    usdt_alvo = 10
+                    alavancagem = 6
+                    qty = round((usdt_alvo * alavancagem) / preco_atual, 3)
 
-                    usdt_alvo = 5
-                    alavancagem = 4
-                    qty = round((usdt_alvo * alavancagem) / preco_atual, 2)
+                    print(f"✅ Entrada válida em {par} com {total_sinais}/12 sinais")
+                    print(f"🚀 Ordem: {par} | Qty: {qty} | TP: {tp} | SL: {sl}")
 
                     session.place_order(
                         category="linear",
@@ -156,14 +146,22 @@ def monitorar_mercado():
                         side="Buy",
                         orderType="Market",
                         qty=qty,
-                        takeProfit=fib["tp"],
-                        stopLoss=fib["sl"],
+                        takeProfit=tp,
+                        stopLoss=sl,
                         leverage=alavancagem
                     )
 
-                    print(f"🚀 Ordem enviada: {par} | Qty: {qty} | TP: {fib['tp']} | SL: {fib['sl']}")
-
                 time.sleep(0.1)
+
+            # Log de status a cada 60 segundos
+            if time.time() - ultimo_log >= 60:
+                agora = datetime.now().strftime("%H:%M:%S")
+                print(f"\n🟢 [{agora}] Bot ativo — últimos 60s:")
+                print(f"🔹 Pares verificados: {verificados}")
+                print(f"🔹 Alertas com 5 sinais: {alertas}")
+                print(f"🔹 Entradas executadas: {entradas}\n")
+                verificados = alertas = entradas = 0
+                ultimo_log = time.time()
 
         except Exception as e:
             print(f"⚠️ Erro ao monitorar mercado: {str(e)}")
@@ -171,10 +169,6 @@ def monitorar_mercado():
 
 # === Iniciar App ===
 
-if __name__ == "__main__":
-    threading.Thread(target=monitorar_mercado).start()
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
 if __name__ == "__main__":
     threading.Thread(target=monitorar_mercado).start()
     port = int(os.environ.get("PORT", 8080))
