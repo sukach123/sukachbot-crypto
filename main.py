@@ -19,7 +19,7 @@ session = HTTP(
 
 @app.route("/")
 def home():
-    return "✅ SukachBot CRYPTO ativo | 10 USDT | 10x | TP 3% | SL 1.5% | Confluência 6+"
+    return "✅ SukachBot CRYPTO (TESTE 5+ sinais) | 10 USDT | 10x | TP 3% | SL 1.5%"
 
 @app.route("/saldo")
 def saldo():
@@ -75,7 +75,7 @@ def contar_sinais(velas):
     ]
     return sum(condicoes)
 
-# ✅ 21 pares (PEPEUSDT removido)
+# ✅ 20 pares (PEPEUSDT removido)
 
 pares = [
     "BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "MATICUSDT",
@@ -86,7 +86,6 @@ pares = [
 
 def monitorar_mercado():
     verificados = 0
-    alertas = 0
     entradas = 0
     ultimo_log = time.time()
 
@@ -120,11 +119,7 @@ def monitorar_mercado():
 
                 total_sinais = contar_sinais(velas)
 
-                if total_sinais == 5:
-                    alertas += 1
-                    print(f"⚠️ Alerta: {par} com 5/12 sinais — quase entrada!")
-
-                if total_sinais >= 6:
+                if total_sinais >= 5:
                     entradas += 1
                     preco_atual = velas[-1]["close"]
                     tp = round(preco_atual * 1.03, 4)
@@ -133,7 +128,7 @@ def monitorar_mercado():
                     alavancagem = 10
                     qty = round((usdt_alvo * alavancagem) / preco_atual, 3)
 
-                    print(f"✅ Entrada válida em {par} com {total_sinais}/12 sinais")
+                    print(f"✅ Entrada TESTE: {par} com {total_sinais}/12 sinais")
                     print(f"🚀 Ordem: {par} | Qty: {qty} | TP: {tp} | SL: {sl}")
 
                     session.place_order(
@@ -151,21 +146,16 @@ def monitorar_mercado():
 
             if time.time() - ultimo_log >= 60:
                 agora = datetime.now().strftime("%H:%M:%S")
-                print(f"\n🟢 [{agora}] Bot ativo — últimos 60s:")
+                print(f"\n🟢 [{agora}] Bot TESTE ativo — últimos 60s:")
                 print(f"🔹 Pares verificados: {verificados}")
-                print(f"🔹 Alertas com 5 sinais: {alertas}")
                 print(f"🔹 Entradas executadas: {entradas}\n")
-                verificados = alertas = entradas = 0
+                verificados = entradas = 0
                 ultimo_log = time.time()
 
         except Exception as e:
             print(f"⚠️ Erro ao monitorar mercado: {str(e)}")
             time.sleep(2)
 
-if __name__ == "__main__":
-    threading.Thread(target=monitorar_mercado).start()
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
 if __name__ == "__main__":
     threading.Thread(target=monitorar_mercado).start()
     port = int(os.environ.get("PORT", 8080))
