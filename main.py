@@ -175,7 +175,7 @@ def monitorar_mercado():
                 continue
             sinais, tendencia = calcular_indicadores(candles_raw)
             print(f"🔎 Indicadores alinhados: {len(sinais)} ➝ {sinais} | Tendência: {tendencia}")
-            if len(sinais) >= 6 and tendencia in ["alta", "baixa"]:
+            if 9 <= len(sinais) <= 12 and tendencia in ["alta", "baixa"]:
                 preco_atual = float(candles_raw[-1][4])
                 usdt_alvo = 12
                 alavancagem = 10
@@ -203,5 +203,6 @@ if __name__ == "__main__":
     threading.Thread(target=monitorar_mercado).start()
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
+
 
 
