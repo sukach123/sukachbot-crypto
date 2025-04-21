@@ -61,8 +61,13 @@ def obter_top_10_pares():
         resposta = requests.get(url)
         if resposta.status_code == 200:
             instrumentos = resposta.json().get("result", {}).get("list", [])
-            # Retorna os 10 primeiros pares
-            return [inst["symbol"] for inst in instrumentos[:10]]
+            
+            # Filtra os pares válidos que contêm "USDT" (padrão de pares mais comuns)
+            pares_validos = [inst["symbol"] for inst in instrumentos if "USDT" in inst["symbol"]]
+            
+            # Limita a 10 pares
+            return pares_validos[:10]  # Pegando apenas os 10 primeiros pares válidos
+            
     except Exception as e:
         print(f"Erro ao buscar pares: {e}")
     return []
@@ -191,7 +196,6 @@ for par in pares:
             sl=STOP_LOSS_PORCENTAGEM,    # Exemplo de SL ajustado
             side="Buy"                   # Ou "Sell", dependendo do sinal
         )
-
 
 
 
