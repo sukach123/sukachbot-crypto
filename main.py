@@ -1,4 +1,4 @@
-# ✅ SukachBot CRYPTO - Código atualizado com Flask + análise automática 💻
+# ✅ SukachBot CRYPTO - Código atualizado com Flask + análise automática + keep-alive Railway 💻
 # Inclui STOP LOSS, entrada mínima, alavancagem 2x, envio Telegram com emojis, e análise com 5-12 sinais
 
 import os
@@ -9,6 +9,8 @@ from datetime import datetime
 from flask import Flask
 import threading
 import numpy as np
+import signal
+import sys
 
 # --- FLASK SETUP ---
 app = Flask(__name__)
@@ -134,6 +136,7 @@ def analisar_par(par):
 # --- LOOP PRINCIPAL ---
 def loop_analise():
     while True:
+        print(f"🟢 {datetime.utcnow().strftime('%H:%M:%S')} - Análise em andamento...")
         for par in PARES:
             analisar_par(par)
             time.sleep(1)
