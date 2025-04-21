@@ -46,7 +46,7 @@ def saldo():
 pares = [
     "BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "MATICUSDT",
     "AVAXUSDT", "LINKUSDT", "TONUSDT", "FETUSDT", "ADAUSDT",
-    "RNDRUSDT", "SHIBUSDT"
+    "RNDRUSDT", "SHIB1000USDT"  # Corrigido SHIBUSDT para SHIB1000USDT
 ]
 
 def calcular_indicadores(candles):
@@ -55,7 +55,6 @@ def calcular_indicadores(candles):
 
     sinais = []
 
-    # RSI
     delta = df["close"].diff()
     gain = delta.clip(lower=0)
     loss = -1 * delta.clip(upper=0)
@@ -66,7 +65,6 @@ def calcular_indicadores(candles):
     if rsi.iloc[-1] < 30:
         sinais.append("RSI")
 
-    # MACD
     ema12 = df["close"].ewm(span=12, adjust=False).mean()
     ema26 = df["close"].ewm(span=26, adjust=False).mean()
     macd = ema12 - ema26
@@ -74,20 +72,17 @@ def calcular_indicadores(candles):
     if macd.iloc[-1] > signal.iloc[-1]:
         sinais.append("MACD")
 
-    # Estocástico
     lowest_low = df["low"].rolling(window=14).min()
     highest_high = df["high"].rolling(window=14).max()
     stoch_k = 100 * ((df["close"] - lowest_low) / (highest_high - lowest_low))
     if stoch_k.iloc[-1] < 20:
         sinais.append("Stoch")
 
-    # EMAs
     ema9 = df["close"].ewm(span=9).mean()
     ema21 = df["close"].ewm(span=21).mean()
     if ema9.iloc[-1] > ema21.iloc[-1]:
         sinais.append("EMA")
 
-    # ADX
     df["tr"] = df[["high", "low", "close"]].max(axis=1) - df[["high", "low", "close"]].min(axis=1)
     df["plus_dm"] = df["high"].diff()
     df["minus_dm"] = df["low"].diff()
@@ -98,13 +93,11 @@ def calcular_indicadores(candles):
     if adx.iloc[-1] > 25:
         sinais.append("ADX")
 
-    # CCI
     typical_price = (df["high"] + df["low"] + df["close"]) / 3
     cci = (typical_price - typical_price.rolling(20).mean()) / (0.015 * typical_price.rolling(20).std())
     if cci.iloc[-1] < -100:
         sinais.append("CCI")
 
-    # Bollinger Bands
     sma = df["close"].rolling(window=20).mean()
     std = df["close"].rolling(window=20).std()
     upper = sma + 2 * std
@@ -112,16 +105,13 @@ def calcular_indicadores(candles):
     if df["close"].iloc[-1] < lower.iloc[-1]:
         sinais.append("Bollinger")
 
-    # Momentum
     momentum = df["close"].diff(periods=10)
     if momentum.iloc[-1] > 0:
         sinais.append("Momentum")
 
-    # Parabolic SAR (simplificado)
     if df["close"].iloc[-1] > df["open"].iloc[-1]:
         sinais.append("PSAR")
 
-    # OBV
     obv = (np.sign(df["close"].diff()) * df["volume"]).fillna(0).cumsum()
     if obv.iloc[-1] > obv.iloc[-2]:
         sinais.append("OBV")
@@ -134,18 +124,23 @@ def monitorar_mercado():
             par = random.choice(pares)
             print(f"🔍 Analisando {par}...")
 
-            candles = session.get_kline(
+            candles_raw = session.get_kline(
                 category="linear",
                 symbol=par,
                 interval="1",
-                limit=100
+                limit=50
             )["result"]["list"]
 
-            sinais = calcular_indicadores(candles)
+            if not candles_raw or len(candles_raw) < 20:
+                print(f"⚠️ Poucos dados em {par}, a ignorar...")
+                time.sleep(1)
+                continue
+
+            sinais = calcular_indicadores(candles_raw)
             print(f"🔎 Indicadores alinhados: {len(sinais)} ➝ {sinais}")
 
             if len(sinais) >= 6:
-                preco_atual = float(candles[-1][4])
+                preco_atual = float(candles_raw[-1][4])
                 usdt_alvo = 5
                 alavancagem = 4
                 qty = round((usdt_alvo * alavancagem) / preco_atual, 3)
