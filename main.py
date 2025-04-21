@@ -85,3 +85,4 @@ def executar_ordem(par, preco_entrada, direcao, preco_atual):
 
 
 
+
