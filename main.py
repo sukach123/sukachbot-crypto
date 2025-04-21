@@ -88,18 +88,12 @@ def executar_ordem(par, preco_entrada, direcao, preco_atual):
 
         hora = datetime.utcnow().strftime("%H:%M:%S")
         mensagem = (
-            f"🚀 *ENTRADA EXECUTADA!*
-"
-            f"📊 *Par:* `{par}`
-"
-            f"📈 *Direção:* `{direcao.upper()}`
-"
-            f"💵 *Preço:* `{preco_entrada:.4f}`
-"
-            f"🎯 *TP:* `{tp:.4f}` | 🛡️ *SL:* `{sl:.4f}`
-"
-            f"💰 *Qtd:* `{quantidade}` | ⚖️ *Alavancagem:* `{ALAVANCAGEM}x`
-"
+            f"🚀 *ENTRADA EXECUTADA!*\n"
+            f"📊 *Par:* `{par}`\n"
+            f"📈 *Direção:* `{direcao.upper()}`\n"
+            f"💵 *Preço:* `{preco_entrada:.4f}`\n"
+            f"🎯 *TP:* `{tp:.4f}` | 🛡️ *SL:* `{sl:.4f}`\n"
+            f"💰 *Qtd:* `{quantidade}` | ⚖️ *Alavancagem:* `{ALAVANCAGEM}x`\n"
             f"⏱️ *Hora:* `{hora}`"
         )
         enviar_telegram_mensagem(mensagem)
@@ -219,7 +213,7 @@ def loop_analise():
             time.sleep(10)
 
 if __name__ == "__main__":
-    threading.Thread(target=iniciar_flask).start()
+    threading.Thread(target=app.run, kwargs={"host": "0.0.0.0", "port": 8080}).start()
     threading.Thread(target=loop_analise).start()
     threading.Thread(target=monitorar_ordens).start()
     print("✅ SukachBot CRYPTO totalmente iniciado com 12 indicadores!")
