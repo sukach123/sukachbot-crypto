@@ -54,7 +54,7 @@ def enviar_telegram_mensagem(mensagem):
     except Exception as e:
         print("Erro ao enviar mensagem para Telegram:", e)
 
-# --- PARES FIXOS PARA ANÁLISE --- 
+# --- PARES FIXOS PARA ANÁLISE ---
 PARES = [
     "BTCUSDT", "ETHUSDT", "SOLUSDT", "AVAXUSDT", "BNBUSDT", 
     "XRPUSDT", "DOGEUSDT", "MATICUSDT", "ADAUSDT", "DOTUSDT"
@@ -125,6 +125,8 @@ def analisar_entradas(par):
     if response.status_code == 200:
         try:
             data = response.json()
+            print(f"Dados retornados para {par}: {data}")  # Verifique os dados recebidos
+
             if 'result' in data and data['result']:
                 df = pd.DataFrame(data['result'])
                 print(f"DataFrame para {par}: {df.head()}")  # Verifique as primeiras linhas do DataFrame
@@ -211,3 +213,4 @@ for par in PARES:
             sl=STOP_LOSS_PORCENTAGEM,
             side="Buy"
         )
+
