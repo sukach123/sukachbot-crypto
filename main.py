@@ -21,7 +21,7 @@ session = HTTP(
 
 @app.route("/")
 def home():
-    return "SukachBot CRYPTO PRO ativo com análise de estrutura e tendência! 🧠📈"
+    return "SukachBot CRYPTO PRO ativo com análise avançada de estrutura, tendência e coerência de sinais! 🧠📊"
 
 @app.route("/saldo")
 def saldo():
@@ -117,8 +117,25 @@ def calcular_indicadores(candles):
     obv = (np.sign(df["close"].diff()) * df["volume"]).fillna(0).cumsum()
     if obv.iloc[-1] > obv.iloc[-2]:
         sinais.append("OBV")
+
     tendencia = detectar_tendencia(df)
-    return sinais, tendencia
+
+    # Confirmação com candle
+    ultimo_candle_verde = df["close"].iloc[-1] > df["open"].iloc[-1]
+    ultimo_candle_vermelho = df["close"].iloc[-1] < df["open"].iloc[-1]
+
+    candle_confirma = (
+        (tendencia == "alta" and ultimo_candle_verde) or
+        (tendencia == "baixa" and ultimo_candle_vermelho)
+    )
+
+    # Verificação de coerência de sinais principais
+    coerente = True
+    sinais_chave = {"RSI": "compra", "MACD": "compra", "Stoch": "compra"}
+    if "RSI" not in sinais or "MACD" not in sinais or "Stoch" not in sinais:
+        coerente = False
+
+    return sinais, tendencia, candle_confirma, coerente
 
 def ajustar_quantidade(par, usdt_alvo, alavancagem, preco_atual):
     try:
@@ -173,9 +190,10 @@ def monitorar_mercado():
                 print(f"⚠️ Poucos dados em {par}, a ignorar...")
                 time.sleep(1)
                 continue
-            sinais, tendencia = calcular_indicadores(candles_raw)
-            print(f"🔎 Indicadores alinhados: {len(sinais)} ➝ {sinais} | Tendência: {tendencia}")
-            if 9 <= len(sinais) <= 12 and tendencia in ["alta", "baixa"]:
+            sinais, tendencia, candle_confirma, coerente = calcular_indicadores(candles_raw)
+            print(f"🔎 Indicadores: {len(sinais)} ➝ {sinais} | Tendência: {tendencia} | Candle confirma: {candle_confirma} | Coerente: {coerente}")
+
+            if 9 <= len(sinais) <= 12 and tendencia in ["alta", "baixa"] and candle_confirma and coerente:
                 preco_atual = float(candles_raw[-1][4])
                 usdt_alvo = 12
                 alavancagem = 10
@@ -203,6 +221,4 @@ if __name__ == "__main__":
     threading.Thread(target=monitorar_mercado).start()
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
-
-
 
