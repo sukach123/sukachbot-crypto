@@ -64,28 +64,19 @@ def executar_ordem(par, preco_entrada, direcao, preco_atual):
             stop_loss=round(sl, 4),
             time_in_force="GoodTillCancel",
             reduce_only=False
-        )
-
         hora = datetime.utcnow().strftime("%H:%M:%S")
 
-        mensagem = (
-            f"🚀 *ENTRADA EXECUTADA!*
-"
-            f"📊 *Par:* `{par}`
-"
-            f"📈 *Direção:* `{direcao.upper()}`
-"
-            f"💵 *Preço:* `{preco_entrada:.4f}`
-"
-            f"🎯 *TP:* `{tp:.4f}` | 🛡️ *SL:* `{sl:.4f}`
-"
-            f"💰 *Qtd:* `{quantidade}` | ⚖️ *Alavancagem:* `{ALAVANCAGEM}x`
-"
-            f"⏱️ *Hora:* `{hora}`"
-        )
+mensagem = (
+    f"🚀 *ENTRADA EXECUTADA!*\n"
+    f"📊 *Par:* `{par}`\n"
+    f"📈 *Direção:* `{direcao.upper()}`\n"
+    f"💵 *Preço:* `{preco_entrada:.4f}`\n"
+    f"🎯 *TP:* `{tp:.4f}` | 🛡️ *SL:* `{sl:.4f}`\n"
+    f"💰 *Qtd:* `{quantidade}` | ⚖️ *Alavancagem:* `{ALAVANCAGEM}x`\n"
+    f"⏱️ *Hora:* `{hora}`"
+)
 
-        enviar_telegram_mensagem(mensagem)
-
+enviar_telegram_mensagem(mensagem)
     except Exception as e:
         print("Erro ao executar ordem:", e)
         enviar_telegram_mensagem(f"❌ Erro ao executar ordem em {par}: {str(e)}")
