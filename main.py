@@ -55,7 +55,7 @@ def executar_ordem(par, preco_entrada, direcao, preco_atual):
 
         print(f"Executando ordem {direcao.upper()} em {par} | Entrada: {preco_entrada:.4f} | TP: {tp:.4f} | SL: {sl:.4f}")
 
-        session.place_order(
+                session.place_order(
             category="linear",
             symbol=par,
             side="Buy" if direcao.lower() == "buy" else "Sell",
@@ -66,6 +66,7 @@ def executar_ordem(par, preco_entrada, direcao, preco_atual):
             time_in_force="GoodTillCancel",
             reduce_only=False
         )
+
 
         hora = datetime.utcnow().strftime("%H:%M:%S")
         mensagem = (
