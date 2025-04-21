@@ -1,6 +1,6 @@
 # ✅ SukachBot CRYPTO - Código com 12 indicadores + análise PRO + execução automática + registo de resultados 💻
 # Entradas reais com 5 ou mais indicadores, TP/SL incluídos, Flask, Telegram e estatísticas ativas
-
+import pandas as pd
 import os
 import time
 import requests
