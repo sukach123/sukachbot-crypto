@@ -86,16 +86,10 @@ def calcular_sma(df, period=20):
 
 # Função de cálculo de indicadores
 def calcular_indicadores(df):
-    # Calcular RSI
     df['RSI'] = calcular_rsi(df)
-    
-    # Calcular MACD
     df['macd'], df['signal'] = calcular_macd(df)
-    
-    # Calcular SMA
     df['sma_20'] = calcular_sma(df)
     
-    # Verifica os sinais para RSI, MACD e SMA
     sinais = []
     if df['RSI'].iloc[-1] < 30:
         sinais.append('RSI Buy')
@@ -116,26 +110,25 @@ def calcular_indicadores(df):
 
 # --- FUNÇÃO PARA ANÁLISE COMPLETA E ENTRADA NO MERCADO ---
 def analisar_entradas(par):
-    # Verifica se o par está na lista dos pares definidos
     if par not in PARES:
         print(f"❌ Par {par} não encontrado na lista de pares válidos.")
         return False
 
-    # Baixar dados históricos do par
-    url = f"https://api.bybit.com/v2/public/kline/list?symbol={par}&interval=1h&limit=200"
-    response = requests.get(url)
+    url = f"https://api.bybit.com/v5/market/kline"  # Alterado para o endpoint V5
+    params = {
+        "symbol": par,
+        "interval": "1h",
+        "limit": 200
+    }
+    response = requests.get(url, params=params)
 
     if response.status_code == 200:
         try:
-            data = response.json()  # Tenta converter a resposta em JSON
+            data = response.json()
             if 'result' in data and data['result']:
                 df = pd.DataFrame(data['result'])
                 df['close'] = df['close'].astype(float)
-
-                # Calcular indicadores e verificar sinais
                 sinais = calcular_indicadores(df)
-
-                # Se 5 ou mais sinais estiverem alinhados
                 if len(set(sinais)) >= 5:
                     print(f"✅ Sinal para {par}: {', '.join(sinais)}")
                     return True
@@ -157,7 +150,6 @@ def criar_ordem_market(symbol, qty, tp, sl, side="Buy"):
     timestamp = str(int(time.time() * 1000))
     url = f"https://api.bybit.com/v5/order/create"
 
-    # Parâmetros da ordem
     body = {
         "category": "linear",
         "symbol": symbol,
@@ -198,7 +190,7 @@ def criar_ordem_market(symbol, qty, tp, sl, side="Buy"):
         enviar_telegram_mensagem(f"❌ Erro ao enviar ordem para {symbol}: {e}")
         return None
 
-# --- PROCESSANDO A ANÁLISE NOS PARES FIXOS --- 
+# --- PROCESSANDO A ANÁLISE NOS PARES FIXOS ---
 print(f"✅ Pares para análise: {PARES}")
 
 for par in PARES:
@@ -208,8 +200,8 @@ for par in PARES:
         criar_ordem_market(
             symbol=par,
             qty=VALOR_ENTRADA_USDT,
-            tp=TAKE_PROFIT_PORCENTAGEM,  # Exemplo de TP ajustado
-            sl=STOP_LOSS_PORCENTAGEM,    # Exemplo de SL ajustado
-            side="Buy"                   # Ou "Sell", dependendo do sinal
+            tp=TAKE_PROFIT_PORCENTAGEM,
+            sl=STOP_LOSS_PORCENTAGEM,
+            side="Buy"
         )
 
