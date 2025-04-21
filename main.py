@@ -1,3 +1,43 @@
+# ✅ SukachBot CRYPTO - Código final corrigido com STOP LOSS, entrada mínima, alavancagem e Telegram
+
+import os
+import time
+import requests
+from pybit.unified_trading import HTTP
+from datetime import datetime
+
+# --- CONFIGURAÇÕES GERAIS ---
+BYBIT_API_KEY = os.getenv("BYBIT_API_KEY")
+BYBIT_API_SECRET = os.getenv("BYBIT_API_SECRET")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+CHAT_ID = os.getenv("CHAT_ID")
+
+# Verificar se variáveis estão configuradas
+if not BOT_TOKEN or not CHAT_ID:
+    raise ValueError("Erro: O BOT_TOKEN ou CHAT_ID do Telegram não estão configurados corretamente.")
+
+session = HTTP(
+    api_key=BYBIT_API_KEY,
+    api_secret=BYBIT_API_SECRET,
+    testnet=False
+)
+
+# --- CONFIGURAÇÕES DO BOT ---
+VALOR_ENTRADA_USDT = 1
+ALAVANCAGEM = 2
+TAKE_PROFIT_PORCENTAGEM = 0.03   # 3%
+STOP_LOSS_PORCENTAGEM = 0.015    # 1.5%
+
+# --- FUNÇÃO DE TELEGRAM ---
+def enviar_telegram_mensagem(mensagem):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    payload = {"chat_id": CHAT_ID, "text": mensagem, "parse_mode": "Markdown"}
+    try:
+        requests.post(url, data=payload)
+    except Exception as e:
+        print("Erro ao enviar mensagem para Telegram:", e)
+
+# --- FUNÇÃO DE EXECUÇÃO DE ORDEM ---
 def executar_ordem(par, preco_entrada, direcao, preco_atual):
     try:
         if not preco_entrada:
