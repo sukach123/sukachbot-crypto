@@ -7,6 +7,7 @@ from flask import Flask
 import threading
 import numpy as np
 import pandas as pd
+import talib  # Verifique se você tem o TA-Lib instalado
 
 # --- FLASK SETUP ---
 app = Flask(__name__)
@@ -63,13 +64,13 @@ PARES = [
 # --- CÁLCULOS DOS INDICADORES (RSI, MACD, etc.) ---
 def calcular_indicadores(df):
     # Calcular RSI
-    df['RSI'] = df['close'].rolling(window=14).apply(lambda x: talib.RSI(x, timeperiod=14)[-1], raw=True)
+    df['RSI'] = talib.RSI(df['close'], timeperiod=14)
 
     # Calcular MACD
     df['macd'], df['signal'], _ = talib.MACD(df['close'], fastperiod=12, slowperiod=26, signalperiod=9)
 
     # Calcular Média Móvel (SMA)
-    df['sma_20'] = df['close'].rolling(window=20).mean()
+    df['sma_20'] = talib.SMA(df['close'], timeperiod=20)
     
     # Verifica os sinais para RSI, MACD e SMA
     sinais = []
@@ -92,6 +93,11 @@ def calcular_indicadores(df):
 
 # --- FUNÇÃO PARA ANÁLISE COMPLETA E ENTRADA NO MERCADO ---
 def analisar_entradas(par):
+    # Verifica se o par está na lista dos pares definidos
+    if par not in PARES:
+        print(f"❌ Par {par} não encontrado na lista de pares válidos.")
+        return False
+
     # Baixar dados históricos do par
     url = f"https://api.bybit.com/v2/public/kline/list?symbol={par}&interval=1h&limit=200"
     response = requests.get(url)
@@ -162,7 +168,7 @@ def criar_ordem_market(symbol, qty, tp, sl, side="Buy"):
         else:
             print(f"❌ Ordem falhou: {resposta.get('retMsg')}")
             enviar_telegram_mensagem(f"❌ Falha ao executar ordem para {symbol}: {resposta.get('retMsg')}")
-        
+
         return resposta
     except Exception as e:
         print(f"Erro ao enviar ordem: {e}")
