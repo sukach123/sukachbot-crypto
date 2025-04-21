@@ -21,7 +21,7 @@ session = HTTP(
 
 @app.route("/")
 def home():
-    return "SukachBot CRYPTO PRO ativo com TP/SL 100% garantido! 💹"
+    return "SukachBot CRYPTO PRO ativo com análise de estrutura e tendência! 🧠📈"
 
 @app.route("/saldo")
 def saldo():
@@ -47,6 +47,21 @@ pares = [
     "AVAXUSDT", "LINKUSDT", "TONUSDT", "FETUSDT", "ADAUSDT",
     "RNDRUSDT", "SHIB1000USDT"
 ]
+
+def detectar_tendencia(df):
+    highs = df['high']
+    lows = df['low']
+    hh = highs.iloc[-1] > highs.iloc[-2] and highs.iloc[-2] > highs.iloc[-3]
+    hl = lows.iloc[-1] > lows.iloc[-2] and lows.iloc[-2] > lows.iloc[-3]
+    ll = lows.iloc[-1] < lows.iloc[-2] and lows.iloc[-2] < lows.iloc[-3]
+    lh = highs.iloc[-1] < highs.iloc[-2] and highs.iloc[-2] < highs.iloc[-3]
+
+    if hh and hl:
+        return "alta"
+    elif ll and lh:
+        return "baixa"
+    else:
+        return "lateral"
 
 def calcular_indicadores(candles):
     df = pd.DataFrame(candles, columns=["timestamp", "open", "high", "low", "close", "volume", "turnover"])
@@ -102,7 +117,8 @@ def calcular_indicadores(candles):
     obv = (np.sign(df["close"].diff()) * df["volume"]).fillna(0).cumsum()
     if obv.iloc[-1] > obv.iloc[-2]:
         sinais.append("OBV")
-    return sinais
+    tendencia = detectar_tendencia(df)
+    return sinais, tendencia
 
 def ajustar_quantidade(par, usdt_alvo, alavancagem, preco_atual):
     try:
@@ -157,12 +173,12 @@ def monitorar_mercado():
                 print(f"⚠️ Poucos dados em {par}, a ignorar...")
                 time.sleep(1)
                 continue
-            sinais = calcular_indicadores(candles_raw)
-            print(f"🔎 Indicadores alinhados: {len(sinais)} ➝ {sinais}")
-            if len(sinais) >= 6:
+            sinais, tendencia = calcular_indicadores(candles_raw)
+            print(f"🔎 Indicadores alinhados: {len(sinais)} ➝ {sinais} | Tendência: {tendencia}")
+            if len(sinais) >= 6 and tendencia in ["alta", "baixa"]:
                 preco_atual = float(candles_raw[-1][4])
-                usdt_alvo = 12  # Atualizado para 12 USDT reais de margem
-                alavancagem = 10  # Confirmado para 10x
+                usdt_alvo = 12
+                alavancagem = 10
                 qty = ajustar_quantidade(par, usdt_alvo, alavancagem, preco_atual)
                 if qty is None:
                     time.sleep(1)
@@ -175,7 +191,7 @@ def monitorar_mercado():
                     qty=qty,
                     leverage=alavancagem
                 )
-                print(f"🚀 ENTRADA REAL: {par} | Qty: {qty} | Preço: {preco_atual} | Sinais: {len(sinais)}")
+                print(f"🚀 ENTRADA REAL: {par} | Qty: {qty} | Preço: {preco_atual} | Sinais: {len(sinais)} | Tendência: {tendencia}")
                 time.sleep(5)
                 aplicar_tp_sl(par, preco_atual)
             time.sleep(1)
