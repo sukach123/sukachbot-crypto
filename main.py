@@ -114,11 +114,11 @@ def analisar_entradas(par):
         print(f"❌ Par {par} não encontrado na lista de pares válidos.")
         return False
 
-    url = f"https://api.bybit.com/v2/public/kline/list"  # Endpoint da API
+    url = f"https://api.bybit.com/v2/public/kline/list"  # Corrigido endpoint para kline/list
     params = {
         "symbol": par,
-        "interval": "5m",  # Intervalo de 5 minutos
-        "limit": 150  # Limite reduzido para 150 candles
+        "interval": "5",  # Intervalo de 5 minutos
+        "limit": 150  # Limite de 150 candles
     }
     response = requests.get(url, params=params)
 
@@ -213,5 +213,3 @@ for par in PARES:
             sl=STOP_LOSS_PORCENTAGEM,
             side="Buy"
         )
-
-
