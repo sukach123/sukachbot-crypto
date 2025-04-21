@@ -21,7 +21,7 @@ session = HTTP(
 
 @app.route("/")
 def home():
-    return "SukachBot CRYPTO PRO ativo com 12 indicadores + gestão de risco avançada! 🚀"
+    return "SukachBot CRYPTO PRO ativo com 12 indicadores + TP/SL verificados! ✅"
 
 @app.route("/saldo")
 def saldo():
@@ -171,16 +171,33 @@ def monitorar_mercado():
                 take_profit = round(preco_atual * 1.03, 3)
                 stop_loss = round(preco_atual * 0.99, 3)
 
-                session.place_order(
+                res = session.place_order(
                     category="linear",
                     symbol=par,
                     side="Buy",
                     orderType="Market",
                     qty=qty,
-                    takeProfit=take_profit,
-                    stopLoss=stop_loss,
                     leverage=alavancagem
                 )
+
+                order_id = res.get("result", {}).get("orderId")
+                if order_id:
+                    sucesso = False
+                    tentativas = 0
+                    while not sucesso and tentativas < 3:
+                        try:
+                            session.set_trading_stop(
+                                category="linear",
+                                symbol=par,
+                                takeProfit=take_profit,
+                                stopLoss=stop_loss
+                            )
+                            print("✅ TP/SL definidos com sucesso!")
+                            sucesso = True
+                        except Exception as e:
+                            tentativas += 1
+                            print(f"⚠️ Tentativa {tentativas} falhou ao aplicar TP/SL: {e}")
+                            time.sleep(1)
 
                 print(f"🚀 ENTRADA REAL: {par} | Qty: {qty} | TP: {take_profit} | SL: {stop_loss} | Sinais: {len(sinais)}")
 
@@ -189,6 +206,11 @@ def monitorar_mercado():
         except Exception as e:
             print(f"⚠️ Erro: {str(e)}")
             time.sleep(2)
+
+if __name__ == "__main__":
+    threading.Thread(target=monitorar_mercado).start()
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
 
 if __name__ == "__main__":
     threading.Thread(target=monitorar_mercado).start()
