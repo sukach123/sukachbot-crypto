@@ -101,15 +101,26 @@ def analisar_entradas(par):
         try:
             data = response.json().get("result", {}).get("list", [])
             if data:
-                df = pd.DataFrame(data, columns=['open', 'high', 'low', 'close', 'volume'])
-                df['close'] = df['close'].astype(float)
+                # Criar DataFrame dinamicamente com base nos dados recebidos
+                df = pd.DataFrame(data)
+                print(f"Colunas disponíveis: {df.columns}")  # Debug para verificar as colunas
 
-                sinais = calcular_indicadores(df)
-                if len(sinais) >= 2:  # Critério ajustável
-                    print(f"✅ Sinal para {par}: {', '.join(sinais)}")
-                    return True
+                # Garantir que a coluna 'close' está disponível
+                if 'close' in df.columns:
+                    df['close'] = df['close'].astype(float)
+
+                    # Calcular indicadores
+                    sinais = calcular_indicadores(df)
+
+                    # Avaliar os sinais
+                    if len(sinais) >= 2:
+                        print(f"✅ Sinal para {par}: {', '.join(sinais)}")
+                        return True
+                    else:
+                        print(f"❌ Sinal para {par}: {', '.join(sinais)}")
+                        return False
                 else:
-                    print(f"❌ Sinal para {par}: {', '.join(sinais)}")
+                    print(f"❌ A coluna 'close' não está disponível para {par}.")
                     return False
             else:
                 print(f"❌ Dados indisponíveis para {par}.")
