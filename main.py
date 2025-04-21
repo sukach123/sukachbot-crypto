@@ -108,17 +108,17 @@ def calcular_indicadores(df):
 
     return sinais
 
-# --- FUNÇÃO PARA ANÁLISE COMPLETA E ENTRADA NO MERCADO --- 
+# --- FUNÇÃO PARA ANÁLISE COMPLETA E ENTRADA NO MERCADO ---
 def analisar_entradas(par):
     if par not in PARES:
         print(f"❌ Par {par} não encontrado na lista de pares válidos.")
         return False
 
-    url = f"https://api.bybit.com/v5/market/kline"  # Alterado para o endpoint V5
+    url = f"https://api.bybit.com/v2/public/kline/list"  # Endpoint da API
     params = {
         "symbol": par,
         "interval": "5m",  # Intervalo de 5 minutos
-        "limit": 200
+        "limit": 150  # Limite reduzido para 150 candles
     }
     response = requests.get(url, params=params)
 
@@ -127,29 +127,24 @@ def analisar_entradas(par):
             data = response.json()
             print(f"Dados retornados para {par}: {data}")  # Verifique os dados recebidos
 
-            if 'result' in data and data['result']:
-                if data['result']:  # Verifique se a lista de dados não está vazia
-                    df = pd.DataFrame(data['result'])  # Corrigir a chave 'result'
-                    print(f"DataFrame para {par}: {df.head()}")  # Verifique as primeiras linhas do DataFrame
-                    
-                    # Verifica se a coluna 'close' está presente
-                    if 'close' in df.columns:
-                        df['close'] = df['close'].astype(float)
-                        sinais = calcular_indicadores(df)
-                        if len(set(sinais)) >= 5:
-                            print(f"✅ Sinal para {par}: {', '.join(sinais)}")
-                            return True
-                        else:
-                            print(f"❌ Sinal para {par}: {', '.join(sinais)}")
-                            return False
+            if 'result' in data and 'list' in data['result'] and data['result']['list']:
+                df = pd.DataFrame(data['result']['list'])
+                print(f"DataFrame para {par}: {df.head()}")  # Verifique as primeiras linhas do DataFrame
+
+                if 'close' in df.columns:
+                    df['close'] = df['close'].astype(float)
+                    sinais = calcular_indicadores(df)
+                    if len(set(sinais)) >= 5:
+                        print(f"✅ Sinal para {par}: {', '.join(sinais)}")
+                        return True
                     else:
-                        print(f"❌ Coluna 'close' não encontrada nos dados para {par}.")
+                        print(f"❌ Sinal para {par}: {', '.join(sinais)}")
                         return False
                 else:
-                    print(f"❌ Lista de dados vazia para {par}.")
+                    print(f"❌ Coluna 'close' não encontrada nos dados para {par}.")
                     return False
             else:
-                print(f"❌ Dados de {par} não disponíveis.")
+                print(f"❌ Lista de dados vazia para {par}.")
                 return False
         except ValueError as e:
             print(f"Erro ao processar dados de {par}: {e}")
@@ -158,7 +153,7 @@ def analisar_entradas(par):
         print(f"❌ Erro na requisição para {par}. Status: {response.status_code}")
         return False
 
-# --- FUNÇÃO PARA CRIAR ORDENS DE MERCADO --- 
+# --- FUNÇÃO PARA CRIAR ORDENS DE MERCADO ---
 def criar_ordem_market(symbol, qty, tp, sl, side="Buy"):
     timestamp = str(int(time.time() * 1000))
     url = f"https://api.bybit.com/v5/order/create"
@@ -174,9 +169,8 @@ def criar_ordem_market(symbol, qty, tp, sl, side="Buy"):
         "time_in_force": "GoodTillCancel"
     }
 
-    # Criação da assinatura de forma segura, sem o uso de str(body) direto
+    # Criação da assinatura de forma segura
     body_str = f'{{"category":"linear","symbol":"{symbol}","side":"{side}","order_type":"Market","qty":{qty},"take_profit":{tp},"stop_loss":{sl},"time_in_force":"GoodTillCancel"}}'
-
     sign_payload = timestamp + BYBIT_API_KEY + "5000" + body_str
     signature = gerar_assinatura(BYBIT_API_SECRET, sign_payload)
 
@@ -219,4 +213,5 @@ for par in PARES:
             sl=STOP_LOSS_PORCENTAGEM,
             side="Buy"
         )
+
 
