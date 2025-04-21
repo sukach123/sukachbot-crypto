@@ -128,11 +128,96 @@ def monitorar_ordens():
             print("Erro ao monitorar ordens:", e)
             time.sleep(3)
 
-# --- CÁLCULOS DE INDICADORES ---
-# (...mantido igual...)
+# --- INDICADORES AUXILIARES ---
+def calcular_rsi(closes, period=14):
+    deltas = np.diff(closes)
+    seed = deltas[:period]
+    up = seed[seed > 0].sum() / period
+    down = -seed[seed < 0].sum() / period
+    rs = up / down if down != 0 else 0
+    rsi = np.zeros_like(closes)
+    rsi[:period] = 100. - 100. / (1. + rs)
+    for i in range(period, len(closes)):
+        delta = deltas[i - 1]
+        upval = max(delta, 0)
+        downval = -min(delta, 0)
+        up = (up * (period - 1) + upval) / period
+        down = (down * (period - 1) + downval) / period
+        rs = up / down if down != 0 else 0
+        rsi[i] = 100. - 100. / (1. + rs)
+    return rsi[-1]
 
-# --- LOOP PRINCIPAL ---
-# (...mantido igual...)
+def calcular_ema(closes, period):
+    return np.array(pd.Series(closes).ewm(span=period, adjust=False).mean())
+
+def calcular_sma(closes, period):
+    return np.convolve(closes, np.ones(period)/period, mode='valid')
+
+def calcular_macd(closes):
+    ema12 = calcular_ema(closes, 12)
+    ema26 = calcular_ema(closes, 26)
+    macd_line = ema12 - ema26
+    signal_line = np.array(pd.Series(macd_line).ewm(span=9, adjust=False).mean())
+    return macd_line, signal_line
+
+# --- LOOP DE ANÁLISE COM 12 INDICADORES ---
+def loop_analise():
+    while True:
+        try:
+            hora = datetime.utcnow().strftime("%H:%M:%S")
+            print(f"⏱️ {hora} - Análise em andamento...")
+
+            for par in PARES:
+                dados = session.get_kline(category="linear", symbol=par, interval=1, limit=100)["result"]["list"]
+                closes = [float(c[4]) for c in dados]
+
+                if len(closes) < 50:
+                    continue
+
+                sinais = 0
+
+                rsi = calcular_rsi(closes)
+                sinais += 1 if rsi > 50 else 0
+
+                ema_fast = calcular_ema(closes, 5)
+                ema_slow = calcular_ema(closes, 20)
+                sinais += 1 if ema_fast[-1] > ema_slow[-1] else 0
+
+                macd_line, signal_line = calcular_macd(closes)
+                sinais += 1 if macd_line[-1] > signal_line[-1] else 0
+
+                sma_20 = calcular_sma(closes, 20)
+                sma_50 = calcular_sma(closes, 50)
+                sinais += 1 if sma_20[-1] > sma_50[-1] else 0
+
+                ult = closes[-1]
+                max_recent = max(closes[-5:])
+                min_recent = min(closes[-5:])
+                sinais += 1 if ult > max_recent * 0.98 else 0
+                sinais += 1 if ult < min_recent * 1.02 else 0
+
+                var = np.var(closes[-10:])
+                sinais += 1 if var > 1 else 0
+
+                momentum = closes[-1] - closes[-5]
+                sinais += 1 if momentum > 0 else 0
+
+                candles_altas = sum([1 for i in range(-5, -1) if closes[i] < closes[i + 1]])
+                sinais += 1 if candles_altas >= 3 else 0
+
+                velas_fortes = sum([1 for i in range(-5, -1) if abs(closes[i] - closes[i+1]) > 0.5])
+                sinais += 1 if velas_fortes >= 2 else 0
+
+                if sinais >= 5:
+                    preco_atual = closes[-1]
+                    direcao = "buy" if ema_fast[-1] > ema_slow[-1] else "sell"
+                    executar_ordem(par, preco_atual, direcao, preco_atual)
+
+            time.sleep(10)
+
+        except Exception as e:
+            print("Erro na análise:", e)
+            time.sleep(10)
 
 # --- INICIAR BOT ---
 if __name__ == "__main__":
@@ -144,6 +229,7 @@ if __name__ == "__main__":
         print(f"💓 Heartbeat: {datetime.utcnow().strftime('%H:%M:%S')} - Bot vivo")
         print(f"📊 Estatísticas: Entradas: {estatisticas['total_entradas']}, WINs: {estatisticas['total_wins']}, LOSSes: {estatisticas['total_losses']}, Lucro: {estatisticas['lucro_total']:.2f} USDT")
         time.sleep(30)
+
 
 
 
