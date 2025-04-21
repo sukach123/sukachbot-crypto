@@ -220,4 +220,3 @@ for par in PARES:
             side="Buy"
         )
 
-
