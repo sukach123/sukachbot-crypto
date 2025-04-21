@@ -81,6 +81,10 @@ def executar_ordem(par, preco_entrada, direcao, preco_atual):
     except Exception as e:
         print("Erro ao executar ordem:", e)
         enviar_telegram_mensagem(f"❌ Erro ao executar ordem em {par}: {str(e)}")
+if __name__ == "__main__":
+    print("🔄 SukachBot CRYPTO iniciado com sucesso...")
+    while True:
+        time.sleep(10)  # Mantém o bot vivo (podes substituir por lógica de análise de sinais depois)
 
 
 
