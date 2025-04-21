@@ -32,8 +32,47 @@ STOP_LOSS_PORCENTAGEM = 0.015
 
 PARES = [
     "BTCUSDT", "ETHUSDT", "SOLUSDT", "AVAXUSDT", "BNBUSDT",
-    "XRPUSDT", "DOGEUSDT", "MATICUSDT", "ADAUSDT", "DOTUSDT"
+    "XRPUSDT", "DOGEUSDT", "ADAUSDT", "DOTUSDT"
 ]
+
+# --- Função para validar quantidade ---
+def validar_quantidade(symbol, qty):
+    url = "https://api.bybit.com/v5/market/instruments-info"
+    params = {"category": "linear"}
+    try:
+        response = requests.get(url, params=params)
+        if response.status_code == 200:
+            data = response.json().get("result", {}).get("list", [])
+            for instrumento in data:
+                if instrumento["symbol"] == symbol:
+                    min_qty = float(instrumento["minTradeQty"])
+                    step_size = float(instrumento["qtyStep"])
+                    if qty < min_qty or qty % step_size != 0:
+                        print(f"❌ Quantidade inválida para {symbol}. Min: {min_qty}, Step: {step_size}")
+                        return False
+                    return True
+        print(f"❌ Dados do símbolo {symbol} não encontrados.")
+        return False
+    except Exception as e:
+        print(f"Erro ao validar quantidade para {symbol}: {e}")
+        return False
+
+# --- Função para validar símbolos ---
+def validar_simbolo(symbol):
+    url = "https://api.bybit.com/v5/market/instruments-info"
+    params = {"category": "linear"}
+    try:
+        response = requests.get(url, params=params)
+        if response.status_code == 200:
+            data = response.json().get("result", {}).get("list", [])
+            for instrumento in data:
+                if instrumento["symbol"] == symbol:
+                    return True
+        print(f"❌ Símbolo inválido: {symbol}")
+        return False
+    except Exception as e:
+        print(f"Erro ao validar símbolo {symbol}: {e}")
+        return False
 
 # --- Função para obter preço atual ---
 def obter_preco_atual(symbol):
@@ -59,12 +98,19 @@ def obter_preco_atual(symbol):
 # --- Função para criar ordem ---
 def criar_ordem_market(symbol, qty, tp_percent, sl_percent, side="Buy"):
     try:
+        # Validar quantidade
+        if not validar_quantidade(symbol, qty):
+            print(f"❌ Ordem cancelada devido à quantidade inválida para {symbol}.")
+            return
+
+        # Obter preço atual
         preco_atual = obter_preco_atual(symbol)
 
         if preco_atual == 0:
             print(f"❌ Não foi possível obter o preço atual para {symbol}. Ordem cancelada.")
             return
 
+        # Calcular TP e SL com valores absolutos
         if side == "Buy":
             tp = round(preco_atual * (1 + tp_percent), 2)
             sl = round(preco_atual * (1 - sl_percent), 2)
@@ -72,7 +118,8 @@ def criar_ordem_market(symbol, qty, tp_percent, sl_percent, side="Buy"):
             tp = round(preco_atual * (1 - tp_percent), 2)
             sl = round(preco_atual * (1 + sl_percent), 2)
 
-        session.place_order(
+        # Criar a ordem
+        response = session.place_order(
             category="linear",
             symbol=symbol,
             side=side,
@@ -120,10 +167,14 @@ def analisar_entradas(par):
 def iniciar_bot():
     print(f"✅ Pares para análise: {PARES}")
     for par in PARES:
-        if analisar_entradas(par):
-            criar_ordem_market(par, VALOR_ENTRADA_USDT, TAKE_PROFIT_PORCENTAGEM, STOP_LOSS_PORCENTAGEM)
+        if validar_simbolo(par):
+            if analisar_entradas(par):
+                criar_ordem_market(par, VALOR_ENTRADA_USDT, TAKE_PROFIT_PORCENTAGEM, STOP_LOSS_PORCENTAGEM)
+        else:
+            print(f"❌ Pulando par inválido: {par}")
 
 # --- Iniciar Flask e Bot ---
 iniciar_flask()
 iniciar_bot()
+
 
