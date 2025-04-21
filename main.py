@@ -10,7 +10,6 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-# Conectar à API da Bybit com variáveis de ambiente
 api_key = os.getenv("BYBIT_API_KEY")
 api_secret = os.getenv("BYBIT_API_SECRET")
 
@@ -46,13 +45,12 @@ def saldo():
 pares = [
     "BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "MATICUSDT",
     "AVAXUSDT", "LINKUSDT", "TONUSDT", "FETUSDT", "ADAUSDT",
-    "RNDRUSDT", "SHIB1000USDT"  # Corrigido SHIBUSDT para SHIB1000USDT
+    "RNDRUSDT", "SHIB1000USDT"
 ]
 
 def calcular_indicadores(candles):
     df = pd.DataFrame(candles, columns=["timestamp", "open", "high", "low", "close", "volume", "turnover"])
     df[["open", "high", "low", "close", "volume"]] = df[["open", "high", "low", "close", "volume"]].astype(float)
-
     sinais = []
 
     delta = df["close"].diff()
@@ -118,6 +116,27 @@ def calcular_indicadores(candles):
 
     return sinais
 
+def ajustar_quantidade(par, usdt_alvo, alavancagem, preco_atual):
+    try:
+        info = session.get_instruments_info(category="linear", symbol=par)
+        filtro = info["result"]["list"][0]["lotSizeFilter"]
+        step = float(filtro["qtyStep"])
+        min_qty = float(filtro["minOrderQty"])
+
+        qty_bruta = (usdt_alvo * alavancagem) / preco_atual
+        precisao = abs(int(round(-np.log10(step), 0)))
+        qty_final = round(qty_bruta, precisao)
+
+        if qty_final < min_qty:
+            print(f"❌ Quantidade abaixo do mínimo ({qty_final} < {min_qty})")
+            return None
+
+        return qty_final
+
+    except Exception as e:
+        print(f"⚠️ Erro ao ajustar quantidade: {e}")
+        return None
+
 def monitorar_mercado():
     while True:
         try:
@@ -143,7 +162,11 @@ def monitorar_mercado():
                 preco_atual = float(candles_raw[-1][4])
                 usdt_alvo = 5
                 alavancagem = 4
-                qty = round((usdt_alvo * alavancagem) / preco_atual, 3)
+                qty = ajustar_quantidade(par, usdt_alvo, alavancagem, preco_atual)
+
+                if qty is None:
+                    time.sleep(1)
+                    continue
 
                 take_profit = round(preco_atual * 1.03, 3)
                 stop_loss = round(preco_atual * 0.99, 3)
@@ -171,4 +194,3 @@ if __name__ == "__main__":
     threading.Thread(target=monitorar_mercado).start()
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
-
