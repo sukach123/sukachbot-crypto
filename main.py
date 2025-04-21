@@ -117,7 +117,7 @@ def analisar_entradas(par):
     url = f"https://api.bybit.com/v5/market/kline"  # Alterado para o endpoint V5
     params = {
         "symbol": par,
-        "interval": "1h",
+        "interval": "15m",  # Intervalo de 15 minutos (tentei um intervalo menor)
         "limit": 200
     }
     response = requests.get(url, params=params)
@@ -136,39 +136,8 @@ def analisar_entradas(par):
                     df['close'] = df['close'].astype(float)
                     sinais = calcular_indicadores(df)
                     if len(set(sinais)) >= 5:
-                        print(f"✅ Sinal para {par}: {', '.join(sinais)}")
-                        return True
-                    else:
-                        print(f"❌ Sinal para {par}: {', '.join(sinais)}")
-                        return False
-                else:
-                    print(f"❌ Coluna 'close' não encontrada nos dados para {par}.")
-                    return False
-            else:
-                print(f"❌ Dados de {par} não disponíveis.")
-                return False
-        except ValueError as e:
-            print(f"Erro ao processar dados de {par}: {e}")
-            return False
-    else:
-        print(f"❌ Erro na requisição para {par}. Status: {response.status_code}")
-        return False
+                        print(f"✅ Sinal para {
 
-# --- FUNÇÃO PARA CRIAR ORDENS DE MERCADO --- 
-def criar_ordem_market(symbol, qty, tp, sl, side="Buy"):
-    timestamp = str(int(time.time() * 1000))
-    url = f"https://api.bybit.com/v5/order/create"
-
-    body = {
-        "category": "linear",
-        "symbol": symbol,
-        "side": side,
-        "order_type": "Market",
-        "qty": qty,
-        "take_profit": tp,
-        "stop_loss": sl,
-        "time_in_force": "GoodTillCancel"
-    }
 
     body_str = str(body).replace("'", '"').replace(" ", "")
     sign_payload = timestamp + BYBIT_API_KEY + "5000" + body_str
