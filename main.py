@@ -1,5 +1,5 @@
-# ✅ SukachBot CRYPTO - Código atualizado por programador com 40 anos de experiência 💻
-# Corrigido: STOP LOSS funcional + entradas de 1 USDT com 2x alavancagem + alerta Telegram com emojis 🎯
+# ✅ SukachBot CRYPTO - Código atualizado com correções avançadas
+# Corrigido: STOP LOSS funcional, entradas de 1 USDT com alavancagem 2x, alerta Telegram com emojis e tratamento de exceções
 
 import os
 import time
@@ -28,7 +28,7 @@ ALAVANCAGEM = 2
 TAKE_PROFIT_PORCENTAGEM = 0.03  # 3%
 STOP_LOSS_PORCENTAGEM = 0.015   # 1.5%
 
-# --- ENVIAR MENSAGEM PARA TELEGRAM ---
+# --- FUNÇÃO TELEGRAM ---
 def enviar_telegram_mensagem(mensagem):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": mensagem, "parse_mode": "Markdown"}
@@ -40,15 +40,15 @@ def enviar_telegram_mensagem(mensagem):
 # --- EXECUTAR ORDEM ---
 def executar_ordem(par, preco_entrada, direcao, preco_atual):
     try:
-        if not preco_entrada:
-            preco_entrada = preco_atual
-
         if direcao.lower() == "buy":
             tp = preco_entrada * (1 + TAKE_PROFIT_PORCENTAGEM)
             sl = preco_entrada * (1 - STOP_LOSS_PORCENTAGEM)
         else:
             tp = preco_entrada * (1 - TAKE_PROFIT_PORCENTAGEM)
             sl = preco_entrada * (1 + STOP_LOSS_PORCENTAGEM)
+
+        if not preco_entrada:
+            preco_entrada = preco_atual
 
         quantidade = round((VALOR_ENTRADA_USDT * ALAVANCAGEM) / preco_entrada, 3)
 
@@ -68,19 +68,27 @@ def executar_ordem(par, preco_entrada, direcao, preco_atual):
 
         hora = datetime.utcnow().strftime("%H:%M:%S")
 
-mensagem = (
-    f"🚀 *ENTRADA EXECUTADA!*\n"
-    f"📊 *Par:* `{par}`\n"
-    f"📈 *Direção:* `{direcao.upper()}`\n"
-    f"💵 *Preço:* `{preco_entrada:.4f}`\n"
-    f"🎯 *TP:* `{tp:.4f}` | 🛡️ *SL:* `{sl:.4f}`\n"
-    f"💰 *Qtd:* `{quantidade}` | ⚖️ *Alavancagem:* `{ALAVANCAGEM}x`\n"
-    f"⏱️ *Hora:* `{hora}`"
-)
-enviar_telegram_mensagem(mensagem)
+        mensagem = (
+            f"🚀 *ENTRADA EXECUTADA!*
+"
+            f"📊 *Par:* `{par}`
+"
+            f"📈 *Direção:* `{direcao.upper()}`
+"
+            f"💵 *Preço:* `{preco_entrada:.4f}`
+"
+            f"🎯 *TP:* `{tp:.4f}` | 🛡️ *SL:* `{sl:.4f}`
+"
+            f"💰 *Qtd:* `{quantidade}` | ⚖️ *Alavancagem:* `{ALAVANCAGEM}x`
+"
+            f"⏱️ *Hora:* `{hora}`"
+        )
+
+        enviar_telegram_mensagem(mensagem)
 
     except Exception as e:
         print("Erro ao executar ordem:", e)
         enviar_telegram_mensagem(f"❌ Erro ao executar ordem em {par}: {str(e)}")
+
 
 
