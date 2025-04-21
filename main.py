@@ -104,4 +104,110 @@ def calcular_indicadores(df):
     if df['close'].iloc[-1] > df['sma_20'].iloc[-1]:
         sinais.append('SMA Buy')
     else:
-        sinais.append('SMA
+        sinais.append('SMA Sell')
+
+    return sinais
+
+# --- FUNÇÃO PARA ANÁLISE COMPLETA E ENTRADA NO MERCADO ---
+def analisar_entradas(par):
+    if par not in PARES:
+        print(f"❌ Par {par} não encontrado na lista de pares válidos.")
+        return False
+
+    url = f"https://api.bybit.com/v5/market/kline"  # Alterado para o endpoint V5
+    params = {
+        "symbol": par,
+        "interval": "1h",
+        "limit": 200
+    }
+    response = requests.get(url, params=params)
+
+    if response.status_code == 200:
+        try:
+            data = response.json()
+            if 'result' in data and data['result']:
+                df = pd.DataFrame(data['result'])
+                print(f"DataFrame para {par}: {df.head()}")  # Verifique as primeiras linhas do DataFrame
+                
+                # Verifica se a coluna 'close' está presente
+                if 'close' in df.columns:
+                    df['close'] = df['close'].astype(float)
+                    sinais = calcular_indicadores(df)
+                    if len(set(sinais)) >= 5:
+                        print(f"✅ Sinal para {par}: {', '.join(sinais)}")
+                        return True
+                    else:
+                        print(f"❌ Sinal para {par}: {', '.join(sinais)}")
+                        return False
+                else:
+                    print(f"❌ Coluna 'close' não encontrada nos dados para {par}.")
+                    return False
+            else:
+                print(f"❌ Dados de {par} não disponíveis.")
+                return False
+        except ValueError as e:
+            print(f"Erro ao processar dados de {par}: {e}")
+            return False
+    else:
+        print(f"❌ Erro na requisição para {par}. Status: {response.status_code}")
+        return False
+
+# --- FUNÇÃO PARA CRIAR ORDENS DE MERCADO --- 
+def criar_ordem_market(symbol, qty, tp, sl, side="Buy"):
+    timestamp = str(int(time.time() * 1000))
+    url = f"https://api.bybit.com/v5/order/create"
+
+    body = {
+        "category": "linear",
+        "symbol": symbol,
+        "side": side,
+        "order_type": "Market",
+        "qty": qty,
+        "take_profit": tp,
+        "stop_loss": sl,
+        "time_in_force": "GoodTillCancel"
+    }
+
+    body_str = str(body).replace("'", '"').replace(" ", "")
+    sign_payload = timestamp + BYBIT_API_KEY + "5000" + body_str
+    signature = gerar_assinatura(BYBIT_API_SECRET, sign_payload)
+
+    headers = {
+        "X-BYBIT-API-KEY": BYBIT_API_KEY,
+        "X-BYBIT-SIGN": signature,
+        "X-BYBIT-TIMESTAMP": timestamp,
+        "X-BYBIT-RECV-WINDOW": "5000",
+        "Content-Type": "application/json"
+    }
+
+    try:
+        response = requests.post(url, json=body, headers=headers)
+        resposta = response.json()
+
+        if response.status_code == 200 and resposta.get("retCode") == 0:
+            print(f"✅ Ordem executada: {symbol} | {side} | {qty} USDT")
+            enviar_telegram_mensagem(f"✅ Ordem executada para {symbol}: {side} | Quantidade: {qty} USDT")
+        else:
+            print(f"❌ Ordem falhou: {resposta.get('retMsg')}")
+            enviar_telegram_mensagem(f"❌ Falha ao executar ordem para {symbol}: {resposta.get('retMsg')}")
+        
+        return resposta
+    except Exception as e:
+        print(f"Erro ao enviar ordem: {e}")
+        enviar_telegram_mensagem(f"❌ Erro ao enviar ordem para {symbol}: {e}")
+        return None
+
+# --- PROCESSANDO A ANÁLISE NOS PARES FIXOS ---
+print(f"✅ Pares para análise: {PARES}")
+
+for par in PARES:
+    print(f"Analisando o par: {par}")
+    
+    if analisar_entradas(par):
+        criar_ordem_market(
+            symbol=par,
+            qty=VALOR_ENTRADA_USDT,
+            tp=TAKE_PROFIT_PORCENTAGEM,
+            sl=STOP_LOSS_PORCENTAGEM,
+            side="Buy"
+        )
