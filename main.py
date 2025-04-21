@@ -121,17 +121,19 @@ def ajustar_quantidade(par, usdt_alvo, alavancagem, preco_atual):
         print(f"⚠️ Erro ao ajustar quantidade: {e}")
         return None
 
-def aplicar_tp_sl(par, tp, sl):
+def aplicar_tp_sl(par, preco_atual):
+    take_profit = round(preco_atual * 1.03, 4)
+    stop_loss = round(preco_atual * 0.985, 4)  # -1.5% SL exato
     sucesso = False
     for tentativa in range(3):
         try:
             session.set_trading_stop(
                 category="linear",
                 symbol=par,
-                takeProfit=tp,
-                stopLoss=sl
+                takeProfit=take_profit,
+                stopLoss=stop_loss
             )
-            print("✅ TP/SL definidos com sucesso!")
+            print(f"✅ TP/SL definidos: TP={take_profit} | SL={stop_loss}")
             sucesso = True
             break
         except Exception as e:
@@ -165,8 +167,6 @@ def monitorar_mercado():
                 if qty is None:
                     time.sleep(1)
                     continue
-                take_profit = round(preco_atual * 1.03, 3)
-                stop_loss = round(preco_atual * 0.99, 3)
                 res = session.place_order(
                     category="linear",
                     symbol=par,
@@ -175,9 +175,9 @@ def monitorar_mercado():
                     qty=qty,
                     leverage=alavancagem
                 )
-                print(f"🚀 ENTRADA REAL: {par} | Qty: {qty} | TP: {take_profit} | SL: {stop_loss} | Sinais: {len(sinais)}")
-                time.sleep(3)
-                aplicar_tp_sl(par, take_profit, stop_loss)
+                print(f"🚀 ENTRADA REAL: {par} | Qty: {qty} | Preço: {preco_atual} | Sinais: {len(sinais)}")
+                time.sleep(5)
+                aplicar_tp_sl(par, preco_atual)
             time.sleep(1)
         except Exception as e:
             print(f"⚠️ Erro: {str(e)}")
