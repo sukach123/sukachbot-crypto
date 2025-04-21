@@ -7,7 +7,6 @@ from flask import Flask
 import threading
 import numpy as np
 import pandas as pd
-import talib  # Verifique se você tem o TA-Lib instalado
 
 # --- FLASK SETUP ---
 app = Flask(__name__)
@@ -62,15 +61,39 @@ PARES = [
 ]
 
 # --- CÁLCULOS DOS INDICADORES (RSI, MACD, etc.) ---
+
+# Calcular RSI
+def calcular_rsi(df, period=14):
+    delta = df['close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
+
+# Calcular MACD
+def calcular_macd(df, fastperiod=12, slowperiod=26, signalperiod=9):
+    df['ema_fast'] = df['close'].ewm(span=fastperiod, adjust=False).mean()
+    df['ema_slow'] = df['close'].ewm(span=slowperiod, adjust=False).mean()
+    df['macd'] = df['ema_fast'] - df['ema_slow']
+    df['signal'] = df['macd'].ewm(span=signalperiod, adjust=False).mean()
+    return df['macd'], df['signal']
+
+# Calcular Média Móvel Simples (SMA)
+def calcular_sma(df, period=20):
+    df['sma'] = df['close'].rolling(window=period).mean()
+    return df['sma']
+
+# Função de cálculo de indicadores
 def calcular_indicadores(df):
     # Calcular RSI
-    df['RSI'] = talib.RSI(df['close'], timeperiod=14)
-
+    df['RSI'] = calcular_rsi(df)
+    
     # Calcular MACD
-    df['macd'], df['signal'], _ = talib.MACD(df['close'], fastperiod=12, slowperiod=26, signalperiod=9)
-
-    # Calcular Média Móvel (SMA)
-    df['sma_20'] = talib.SMA(df['close'], timeperiod=20)
+    df['macd'], df['signal'] = calcular_macd(df)
+    
+    # Calcular SMA
+    df['sma_20'] = calcular_sma(df)
     
     # Verifica os sinais para RSI, MACD e SMA
     sinais = []
@@ -168,7 +191,7 @@ def criar_ordem_market(symbol, qty, tp, sl, side="Buy"):
         else:
             print(f"❌ Ordem falhou: {resposta.get('retMsg')}")
             enviar_telegram_mensagem(f"❌ Falha ao executar ordem para {symbol}: {resposta.get('retMsg')}")
-
+        
         return resposta
     except Exception as e:
         print(f"Erro ao enviar ordem: {e}")
@@ -189,5 +212,4 @@ for par in PARES:
             sl=STOP_LOSS_PORCENTAGEM,    # Exemplo de SL ajustado
             side="Buy"                   # Ou "Sell", dependendo do sinal
         )
-
 
