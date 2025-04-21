@@ -136,10 +136,43 @@ def analisar_entradas(par):
                     df['close'] = df['close'].astype(float)
                     sinais = calcular_indicadores(df)
                     if len(set(sinais)) >= 5:
-                        print(f"✅ Sinal para {
+                        print(f"✅ Sinal para {par}: {', '.join(sinais)}")
+                        return True
+                    else:
+                        print(f"❌ Sinal para {par}: {', '.join(sinais)}")
+                        return False
+                else:
+                    print(f"❌ Coluna 'close' não encontrada nos dados para {par}.")
+                    return False
+            else:
+                print(f"❌ Dados de {par} não disponíveis.")
+                return False
+        except ValueError as e:
+            print(f"Erro ao processar dados de {par}: {e}")
+            return False
+    else:
+        print(f"❌ Erro na requisição para {par}. Status: {response.status_code}")
+        return False
 
+# --- FUNÇÃO PARA CRIAR ORDENS DE MERCADO --- 
+def criar_ordem_market(symbol, qty, tp, sl, side="Buy"):
+    timestamp = str(int(time.time() * 1000))
+    url = f"https://api.bybit.com/v5/order/create"
 
-    body_str = str(body).replace("'", '"').replace(" ", "")
+    body = {
+        "category": "linear",
+        "symbol": symbol,
+        "side": side,
+        "order_type": "Market",
+        "qty": qty,
+        "take_profit": tp,
+        "stop_loss": sl,
+        "time_in_force": "GoodTillCancel"
+    }
+
+    # Criação da assinatura de forma segura, sem o uso de str(body) direto
+    body_str = f'{{"category":"linear","symbol":"{symbol}","side":"{side}","order_type":"Market","qty":{qty},"take_profit":{tp},"stop_loss":{sl},"time_in_force":"GoodTillCancel"}}'
+
     sign_payload = timestamp + BYBIT_API_KEY + "5000" + body_str
     signature = gerar_assinatura(BYBIT_API_SECRET, sign_payload)
 
@@ -182,4 +215,5 @@ for par in PARES:
             sl=STOP_LOSS_PORCENTAGEM,
             side="Buy"
         )
+
 
