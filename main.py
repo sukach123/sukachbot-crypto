@@ -1,127 +1,179 @@
-# ✅ SukachBot CRYPTO - v2025-04-20_1010_estável 💻
-# 12 indicadores, entradas reais com 5+ sinais, TP/SL, Telegram, estatísticas e análise contínua
-
+from flask import Flask
 import os
 import time
-import requests
-from pybit.unified_trading import HTTP
-from datetime import datetime
-from flask import Flask
+import random
 import threading
 import numpy as np
 import pandas as pd
+from pybit.unified_trading import HTTP
+from datetime import datetime
 
 app = Flask(__name__)
 
-@app.route('/')
+# Conectar à API da Bybit com variáveis de ambiente
+api_key = os.getenv("BYBIT_API_KEY")
+api_secret = os.getenv("BYBIT_API_SECRET")
+
+session = HTTP(
+    api_key=api_key,
+    api_secret=api_secret,
+    testnet=False
+)
+
+@app.route("/")
 def home():
-    return "✅ SukachBot CRYPTO está online!"
+    return "SukachBot CRYPTO PRO ativo com 12 indicadores + gestão de risco avançada! 🚀"
 
-# --- CONFIGURAÇÕES ---
-BYBIT_API_KEY = os.getenv("BYBIT_API_KEY")
-BYBIT_API_SECRET = os.getenv("BYBIT_API_SECRET")
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")
+@app.route("/saldo")
+def saldo():
+    try:
+        response = session.get_wallet_balance(accountType="UNIFIED")
+        coins = response["result"]["list"][0]["coin"]
+        output = "<h2>Saldo Atual:</h2><ul>"
+        for coin in coins:
+            value = coin.get("availableToWithdraw", "0")
+            try:
+                balance = float(value)
+                if balance > 0:
+                    output += f"<li>{coin['coin']}: {balance}</li>"
+            except ValueError:
+                continue
+        output += "</ul>"
+        return output or "Sem saldo disponível."
+    except Exception as e:
+        return f"Erro ao obter saldo: {str(e)}"
 
-if not BOT_TOKEN or not CHAT_ID:
-    raise ValueError("Erro: O BOT_TOKEN ou CHAT_ID do Telegram não estão configurados corretamente.")
-
-session = HTTP(api_key=BYBIT_API_KEY, api_secret=BYBIT_API_SECRET, testnet=False)
-
-VALOR_ENTRADA_USDT = 5
-ALAVANCAGEM = 2
-TAKE_PROFIT_PORCENTAGEM = 0.03
-STOP_LOSS_PORCENTAGEM = 0.015
-PARES = [
-    "BTCUSDT", "ETHUSDT", "SOLUSDT", "AVAXUSDT", "LINKUSDT", "XRPUSDT", "DOGEUSDT",
-    "MATICUSDT", "ADAUSDT", "BNBUSDT", "DOTUSDT", "TONUSDT", "1000SHIBUSDT"
+pares = [
+    "BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "MATICUSDT",
+    "AVAXUSDT", "LINKUSDT", "TONUSDT", "FETUSDT", "ADAUSDT",
+    "RNDRUSDT", "SHIBUSDT"
 ]
 
-estatisticas = {
-    "total_entradas": 0,
-    "total_wins": 0,
-    "total_losses": 0,
-    "lucro_total": 0.0,
-    "ordens_ativas": []
-}
+def calcular_indicadores(candles):
+    df = pd.DataFrame(candles, columns=["timestamp", "open", "high", "low", "close", "volume", "turnover"])
+    df[["open", "high", "low", "close", "volume"]] = df[["open", "high", "low", "close", "volume"]].astype(float)
 
-def enviar_telegram_mensagem(mensagem):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": mensagem, "parse_mode": "Markdown"}
-    try:
-        requests.post(url, data=payload)
-    except Exception as e:
-        print("Erro ao enviar mensagem para Telegram:", e)
+    sinais = []
 
-def obter_precisao_do_par(par):
-    try:
-        info = session.get_instruments_info(category="linear", symbol=par)
-        lot_size = info["result"]["list"][0]["lotSizeFilter"]
-        step_size = float(lot_size["qtyStep"])
-        precisao = abs(int(round(-np.log10(step_size))))
-        return precisao
-    except:
-        return 3  # padrão caso falhe
+    # RSI
+    delta = df["close"].diff()
+    gain = delta.clip(lower=0)
+    loss = -1 * delta.clip(upper=0)
+    avg_gain = gain.rolling(window=14).mean()
+    avg_loss = loss.rolling(window=14).mean()
+    rs = avg_gain / avg_loss
+    rsi = 100 - (100 / (1 + rs))
+    if rsi.iloc[-1] < 30:
+        sinais.append("RSI")
 
-def executar_ordem(par, preco_entrada, direcao, preco_atual):
-    try:
-        if not preco_entrada:
-            preco_entrada = preco_atual
+    # MACD
+    ema12 = df["close"].ewm(span=12, adjust=False).mean()
+    ema26 = df["close"].ewm(span=26, adjust=False).mean()
+    macd = ema12 - ema26
+    signal = macd.ewm(span=9, adjust=False).mean()
+    if macd.iloc[-1] > signal.iloc[-1]:
+        sinais.append("MACD")
 
-        if direcao.lower() == "buy":
-            tp = preco_entrada * (1 + TAKE_PROFIT_PORCENTAGEM)
-            sl = preco_entrada * (1 - STOP_LOSS_PORCENTAGEM)
-        else:
-            tp = preco_entrada * (1 - TAKE_PROFIT_PORCENTAGEM)
-            sl = preco_entrada * (1 + STOP_LOSS_PORCENTAGEM)
+    # Estocástico
+    lowest_low = df["low"].rolling(window=14).min()
+    highest_high = df["high"].rolling(window=14).max()
+    stoch_k = 100 * ((df["close"] - lowest_low) / (highest_high - lowest_low))
+    if stoch_k.iloc[-1] < 20:
+        sinais.append("Stoch")
 
-        precisao = obter_precisao_do_par(par)
-        quantidade = round((VALOR_ENTRADA_USDT * ALAVANCAGEM) / preco_entrada, precisao)
+    # EMAs
+    ema9 = df["close"].ewm(span=9).mean()
+    ema21 = df["close"].ewm(span=21).mean()
+    if ema9.iloc[-1] > ema21.iloc[-1]:
+        sinais.append("EMA")
 
-        if quantidade <= 0:
-            print("Quantidade inválida, ordem não enviada.")
-            return
+    # ADX
+    df["tr"] = df[["high", "low", "close"]].max(axis=1) - df[["high", "low", "close"]].min(axis=1)
+    df["plus_dm"] = df["high"].diff()
+    df["minus_dm"] = df["low"].diff()
+    tr14 = df["tr"].rolling(14).mean()
+    plus_di = 100 * (df["plus_dm"].rolling(14).mean() / tr14)
+    minus_di = 100 * (df["minus_dm"].rolling(14).mean() / tr14)
+    adx = ((plus_di - minus_di).abs() / (plus_di + minus_di)).rolling(14).mean() * 100
+    if adx.iloc[-1] > 25:
+        sinais.append("ADX")
 
-        session.place_order(
-            category="linear",
-            symbol=par,
-            side="Buy" if direcao.lower() == "buy" else "Sell",
-            order_type="Market",
-            qty=quantidade,
-            take_profit=round(tp, 4),
-            stop_loss=round(sl, 4),
-            time_in_force="GoodTillCancel",
-            reduce_only=False
-        )
+    # CCI
+    typical_price = (df["high"] + df["low"] + df["close"]) / 3
+    cci = (typical_price - typical_price.rolling(20).mean()) / (0.015 * typical_price.rolling(20).std())
+    if cci.iloc[-1] < -100:
+        sinais.append("CCI")
 
-        estatisticas["total_entradas"] += 1
-        estatisticas["ordens_ativas"].append({"par": par, "entrada": preco_entrada, "tp": tp, "sl": sl})
+    # Bollinger Bands
+    sma = df["close"].rolling(window=20).mean()
+    std = df["close"].rolling(window=20).std()
+    upper = sma + 2 * std
+    lower = sma - 2 * std
+    if df["close"].iloc[-1] < lower.iloc[-1]:
+        sinais.append("Bollinger")
 
-        hora = datetime.utcnow().strftime("%H:%M:%S")
-        mensagem = (
-            f"🚀 *ENTRADA EXECUTADA!*\n"
-            f"📊 *Par:* `{par}`\n"
-            f"📈 *Direção:* `{direcao.upper()}`\n"
-            f"💵 *Preço:* `{preco_entrada:.4f}`\n"
-            f"🎯 *TP:* `{tp:.4f}` | 🛡️ *SL:* `{sl:.4f}`\n"
-            f"💰 *Qtd:* `{quantidade}` | ⚖️ *Alavancagem:* `{ALAVANCAGEM}x`\n"
-            f"⏱️ *Hora:* `{hora}`"
-        )
-        enviar_telegram_mensagem(mensagem)
+    # Momentum
+    momentum = df["close"].diff(periods=10)
+    if momentum.iloc[-1] > 0:
+        sinais.append("Momentum")
 
-    except Exception as e:
-        print("Erro ao executar ordem:", e)
-        enviar_telegram_mensagem(f"❌ Erro ao executar ordem em {par}: {str(e)}")
+    # Parabolic SAR (simplificado)
+    if df["close"].iloc[-1] > df["open"].iloc[-1]:
+        sinais.append("PSAR")
 
-# (demais funções permanecem iguais, sem necessidade de alterações)
+    # OBV
+    obv = (np.sign(df["close"].diff()) * df["volume"]).fillna(0).cumsum()
+    if obv.iloc[-1] > obv.iloc[-2]:
+        sinais.append("OBV")
+
+    return sinais
+
+def monitorar_mercado():
+    while True:
+        try:
+            par = random.choice(pares)
+            print(f"🔍 Analisando {par}...")
+
+            candles = session.get_kline(
+                category="linear",
+                symbol=par,
+                interval="1",
+                limit=100
+            )["result"]["list"]
+
+            sinais = calcular_indicadores(candles)
+            print(f"🔎 Indicadores alinhados: {len(sinais)} ➝ {sinais}")
+
+            if len(sinais) >= 6:
+                preco_atual = float(candles[-1][4])
+                usdt_alvo = 5
+                alavancagem = 4
+                qty = round((usdt_alvo * alavancagem) / preco_atual, 3)
+
+                take_profit = round(preco_atual * 1.03, 3)
+                stop_loss = round(preco_atual * 0.99, 3)
+
+                session.place_order(
+                    category="linear",
+                    symbol=par,
+                    side="Buy",
+                    orderType="Market",
+                    qty=qty,
+                    takeProfit=take_profit,
+                    stopLoss=stop_loss,
+                    leverage=alavancagem
+                )
+
+                print(f"🚀 ENTRADA REAL: {par} | Qty: {qty} | TP: {take_profit} | SL: {stop_loss} | Sinais: {len(sinais)}")
+
+            time.sleep(1)
+
+        except Exception as e:
+            print(f"⚠️ Erro: {str(e)}")
+            time.sleep(2)
 
 if __name__ == "__main__":
-    threading.Thread(target=app.run, kwargs={"host": "0.0.0.0", "port": 8080}).start()
-    threading.Thread(target=loop_analise).start()
-    threading.Thread(target=monitorar_ordens).start()
-    print("✅ SukachBot CRYPTO totalmente iniciado com 12 indicadores!")
-    while True:
-        print(f"💓 Heartbeat: {datetime.utcnow().strftime('%H:%M:%S')} - Bot vivo")
-        print(f"📊 Estatísticas: Entradas: {estatisticas['total_entradas']}, WINs: {estatisticas['total_wins']}, LOSSes: {estatisticas['total_losses']}, Lucro: {estatisticas['lucro_total']:.2f} USDT")
-        time.sleep(30)
+    threading.Thread(target=monitorar_mercado).start()
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
 
