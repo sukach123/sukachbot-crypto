@@ -196,26 +196,5 @@ def criar_ordem_market(symbol, qty, tp, sl, side="Buy"):
             print(f"✅ Ordem executada: {symbol} | {side} | {qty} USDT")
             enviar_telegram_mensagem(f"✅ Ordem executada para {symbol}: {side} | Quantidade: {qty} USDT")
         else:
-            print(f"❌ Ordem falhou: {resposta.get('retMsg')}")
-            enviar_telegram_mensagem(f"❌ Falha ao executar ordem para {symbol}: {resposta.get('retMsg')}")
-        
-        return resposta
-    except Exception as e:
-        print(f"Erro ao enviar ordem: {e}")
-        enviar_telegram_mensagem(f"❌ Erro ao enviar ordem para {symbol}: {e}")
-        return None
-
-# --- PROCESSANDO A ANÁLISE NOS PARES FIXOS ---
-print(f"✅ Pares para análise: {PARES}")
-
-for par in PARES:
-    print(f"Analisando o par: {par}")
-    
-    if analisar_entradas(par):
-        criar_ordem_market(
-            symbol=par,
-            qty=VALOR_ENTRADA_USDT,
-            tp=TAKE_PROFIT_PORCENTAGEM,
-            sl=STOP_LOSS_PORCENTAGEM,
-            side="Buy"
-        )
+            print(f"❌ Ordem falhou:
+            
