@@ -102,24 +102,32 @@ def analisar_entradas(par):
     # Baixar dados históricos do par
     url = f"https://api.bybit.com/v2/public/kline/list?symbol={par}&interval=1h&limit=200"
     response = requests.get(url)
-    data = response.json()
 
-    if response.status_code == 200 and data['result']:
-        df = pd.DataFrame(data['result'])
-        df['close'] = df['close'].astype(float)
+    if response.status_code == 200:
+        try:
+            data = response.json()  # Tenta converter a resposta em JSON
+            if 'result' in data and data['result']:
+                df = pd.DataFrame(data['result'])
+                df['close'] = df['close'].astype(float)
 
-        # Calcular indicadores e verificar sinais
-        sinais = calcular_indicadores(df)
+                # Calcular indicadores e verificar sinais
+                sinais = calcular_indicadores(df)
 
-        # Se 5 ou mais sinais estiverem alinhados
-        if len(set(sinais)) >= 5:
-            print(f"✅ Sinal para {par}: {', '.join(sinais)}")
-            return True
-        else:
-            print(f"❌ Sinal para {par}: {', '.join(sinais)}")
+                # Se 5 ou mais sinais estiverem alinhados
+                if len(set(sinais)) >= 5:
+                    print(f"✅ Sinal para {par}: {', '.join(sinais)}")
+                    return True
+                else:
+                    print(f"❌ Sinal para {par}: {', '.join(sinais)}")
+                    return False
+            else:
+                print(f"❌ Dados de {par} não disponíveis.")
+                return False
+        except ValueError as e:
+            print(f"Erro ao processar dados de {par}: {e}")
             return False
     else:
-        print(f"❌ Dados de {par} não disponíveis ou erro na requisição")
+        print(f"❌ Erro na requisição para {par}. Status: {response.status_code}")
         return False
 
 # --- FUNÇÃO PARA CRIAR ORDENS DE MERCADO --- 
