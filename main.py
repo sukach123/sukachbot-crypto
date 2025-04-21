@@ -20,11 +20,9 @@ def iniciar_flask():
 # --- CONFIGURAÇÕES GERAIS ---
 BYBIT_API_KEY = os.getenv("BYBIT_API_KEY")
 BYBIT_API_SECRET = os.getenv("BYBIT_API_SECRET")
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-CHAT_ID = os.getenv("CHAT_ID")
 
 # Verificar se variáveis estão configuradas
-if not BYBIT_API_KEY or not BYBIT_API_SECRET or not BOT_TOKEN or not CHAT_ID:
+if not BYBIT_API_KEY or not BYBIT_API_SECRET:
     raise ValueError("Erro: Configurações de variáveis de ambiente inválidas!")
 
 session = HTTP(api_key=BYBIT_API_KEY, api_secret=BYBIT_API_SECRET, testnet=False)
@@ -39,17 +37,6 @@ PARES = [
     "BTCUSDT", "ETHUSDT", "SOLUSDT", "AVAXUSDT", "BNBUSDT",
     "XRPUSDT", "DOGEUSDT", "MATICUSDT", "ADAUSDT", "DOTUSDT"
 ]
-
-# --- FUNÇÃO DE TELEGRAM ---
-def enviar_telegram_mensagem(mensagem):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": mensagem, "parse_mode": "Markdown"}
-    try:
-        response = requests.post(url, data=payload)
-        response.raise_for_status()
-        print("Mensagem enviada ao Telegram com sucesso.")
-    except requests.exceptions.RequestException as e:
-        print(f"Erro ao enviar mensagem para Telegram: {e}")
 
 # --- FUNÇÕES PARA CÁLCULO DE INDICADORES ---
 def calcular_rsi(df, period=14):
@@ -137,6 +124,22 @@ def analisar_entradas(par):
 # --- CRIAÇÃO DE ORDENS ---
 def criar_ordem_market(symbol, qty, tp, sl, side="Buy"):
     try:
+        # Obter o preço atual do símbolo para cálculos
+        preco_atual = session.get_latest_price(symbol=symbol).get("price", 0)
+
+        if preco_atual == 0:
+            print(f"❌ Não foi possível obter o preço atual para {symbol}. Ordem cancelada.")
+            return
+
+        # Calcular Take Profit (TP) e Stop Loss (SL) em valores absolutos
+        if side == "Buy":
+            tp = round(preco_atual * (1 + tp), 2)
+            sl = round(preco_atual * (1 - sl), 2)
+        else:
+            tp = round(preco_atual * (1 - tp), 2)
+            sl = round(preco_atual * (1 + sl), 2)
+
+        # Criar ordem com os parâmetros corrigidos
         session.place_order(
             category="linear",
             symbol=symbol,
@@ -147,11 +150,10 @@ def criar_ordem_market(symbol, qty, tp, sl, side="Buy"):
             stop_loss=sl,
             time_in_force="GoodTillCancel"
         )
-        print(f"✅ Ordem executada: {symbol} | {side} | {qty} USDT")
-        enviar_telegram_mensagem(f"✅ Ordem executada para {symbol}: {side} | Quantidade: {qty} USDT")
+
+        print(f"✅ Ordem executada: {symbol} | {side} | {qty} USDT | TP: {tp} | SL: {sl}")
     except Exception as e:
         print(f"Erro ao enviar ordem: {e}")
-        enviar_telegram_mensagem(f"❌ Erro ao enviar ordem para {symbol}: {e}")
 
 # --- PROCESSAMENTO ---
 def iniciar_bot():
