@@ -54,23 +54,11 @@ def enviar_telegram_mensagem(mensagem):
     except Exception as e:
         print("Erro ao enviar mensagem para Telegram:", e)
 
-# --- FUNÇÃO PARA OBTER OS 10 PRIMEIROS PARES DISPONÍVEIS (na categoria 'linear') ---
-def obter_top_10_pares():
-    try:
-        url = "https://api.bybit.com/v5/market/instruments-info?category=linear"
-        resposta = requests.get(url)
-        if resposta.status_code == 200:
-            instrumentos = resposta.json().get("result", {}).get("list", [])
-            
-            # Filtra os pares válidos que contêm "USDT" (padrão de pares mais comuns)
-            pares_validos = [inst["symbol"] for inst in instrumentos if "USDT" in inst["symbol"]]
-            
-            # Limita a 10 pares
-            return pares_validos[:10]  # Pegando apenas os 10 primeiros pares válidos
-            
-    except Exception as e:
-        print(f"Erro ao buscar pares: {e}")
-    return []
+# --- PARES FIXOS PARA ANÁLISE --- 
+PARES = [
+    "BTCUSDT", "ETHUSDT", "SOLUSDT", "AVAXUSDT", "BNBUSDT", 
+    "XRPUSDT", "DOGEUSDT", "MATICUSDT", "ADAUSDT", "DOTUSDT"
+]
 
 # --- CÁLCULOS DOS INDICADORES (RSI, MACD, etc.) ---
 def calcular_indicadores(df):
@@ -181,11 +169,10 @@ def criar_ordem_market(symbol, qty, tp, sl, side="Buy"):
         enviar_telegram_mensagem(f"❌ Erro ao enviar ordem para {symbol}: {e}")
         return None
 
-# --- PROCESSANDO A ANÁLISE NOS PARES --- 
-pares = obter_top_10_pares()  # Buscar os 10 pares principais
-print(f"✅ Pares para análise: {pares}")
+# --- PROCESSANDO A ANÁLISE NOS PARES FIXOS --- 
+print(f"✅ Pares para análise: {PARES}")
 
-for par in pares:
+for par in PARES:
     print(f"Analisando o par: {par}")
     
     if analisar_entradas(par):
@@ -196,6 +183,5 @@ for par in pares:
             sl=STOP_LOSS_PORCENTAGEM,    # Exemplo de SL ajustado
             side="Buy"                   # Ou "Sell", dependendo do sinal
         )
-
 
 
