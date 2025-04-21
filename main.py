@@ -123,7 +123,7 @@ def ajustar_quantidade(par, usdt_alvo, alavancagem, preco_atual):
 
 def aplicar_tp_sl(par, preco_atual):
     take_profit = round(preco_atual * 1.03, 4)
-    stop_loss = round(preco_atual * 0.985, 4)  # -1.5% SL exato
+    stop_loss = round(preco_atual * 0.985, 4)
     sucesso = False
     for tentativa in range(3):
         try:
@@ -161,8 +161,8 @@ def monitorar_mercado():
             print(f"🔎 Indicadores alinhados: {len(sinais)} ➝ {sinais}")
             if len(sinais) >= 6:
                 preco_atual = float(candles_raw[-1][4])
-                usdt_alvo = 5
-                alavancagem = 4
+                usdt_alvo = 12  # Atualizado para 12 USDT reais de margem
+                alavancagem = 10  # Confirmado para 10x
                 qty = ajustar_quantidade(par, usdt_alvo, alavancagem, preco_atual)
                 if qty is None:
                     time.sleep(1)
@@ -187,4 +187,5 @@ if __name__ == "__main__":
     threading.Thread(target=monitorar_mercado).start()
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
+
 
