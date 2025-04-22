@@ -127,9 +127,7 @@ def calcular_indicadores(candles):
         (tendencia == "baixa" and ultimo_candle_vermelho)
     )
 
-    coerente = True
-    if "RSI" not in sinais or "MACD" not in sinais or "Stoch" not in sinais:
-        coerente = False
+    coerente = sum(indicador in sinais for indicador in ["RSI", "MACD", "Stoch"]) >= 2
 
     return sinais, tendencia, candle_confirma, coerente
 
