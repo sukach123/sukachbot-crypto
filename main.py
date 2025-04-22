@@ -150,7 +150,7 @@ def monitorar_mercado():
             sinais, tendencia, candle_confirma, coerente = calcular_indicadores(candles_raw)
             print(f"🔎 Indicadores: {len(sinais)} ➝ {sinais} | Tendência: {tendencia} | Candle confirma: {candle_confirma} | Coerente: {coerente}")
 
-            if 6 <= len(sinais) <= 12 and tendencia in ["alta", "baixa"] and candle_confirma and coerente:
+            if 5 <= len(sinais) <= 12 and tendencia in ["alta", "baixa"] and candle_confirma and coerente:
                 preco_atual = float(candles_raw[-1][4])
                 usdt_alvo = 2
                 alavancagem = 2
