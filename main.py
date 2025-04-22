@@ -132,6 +132,12 @@ def calcular_indicadores(candles):
 
     return sinais, tendencia, candle_confirma, coerente
 
+def ajustar_quantidade(par, usdt_alvo, alavancagem, preco):
+    try:
+        return round((usdt_alvo * alavancagem) / preco, 3)
+    except:
+        return None
+
 def monitorar_mercado():
     while True:
         try:
@@ -147,10 +153,11 @@ def monitorar_mercado():
                 print(f"⚠️ Poucos dados em {par}, a ignorar...")
                 time.sleep(1)
                 continue
-            sinais, tendencia, candle_confirma, coerente = calcular_indicadores(candles_raw)
-            print(f"🔎 Indicadores: {len(sinais)} ➝ {sinais} | Tendência: {tendencia} | Candle confirma: {candle_confirma} | Coerente: {coerente}")
 
-            if 5 <= len(sinais) <= 12 and tendencia in ["alta", "baixa"] and candle_confirma and coerente:
+            sinais, tendencia, candle_confirma, coerente = calcular_indicadores(candles_raw)
+            print(f"🔎 Indicadores: {len(sinais)} ➔ {sinais} | Tendência: {tendencia} | Candle confirma: {candle_confirma} | Coerente (3 chaves): {coerente}")
+
+            if 5 <= len(sinais) <= 12 and tendencia in ["alta", "baixa"] and candle_confirma:
                 preco_atual = float(candles_raw[-1][4])
                 usdt_alvo = 2
                 alavancagem = 2
