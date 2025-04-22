@@ -189,10 +189,10 @@ def monitorar_mercado():
             sinais, tendencia, candle_confirma, coerente = calcular_indicadores(candles_raw)
             print(f"Indicadores: {len(sinais)} ➝ {sinais} | Tendência: {tendencia} | Candle confirma: {candle_confirma} | Coerente: {coerente}")
 
-            if 9 <= len(sinais) <= 12 and tendencia in ["alta", "baixa"] and candle_confirma and coerente:
+            if 5 <= len(sinais) <= 12 and tendencia in ["alta", "baixa"] and candle_confirma and coerente:
                 preco_atual = float(candles_raw[-1][4])
-                usdt_alvo = 12
-                alavancagem = 10
+                usdt_alvo = 2
+                alavancagem = 2
                 qty = ajustar_quantidade(par, usdt_alvo, alavancagem, preco_atual)
                 if qty is None:
                     time.sleep(1)
@@ -217,4 +217,5 @@ if __name__ == "__main__":
     threading.Thread(target=monitorar_mercado).start()
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
+
 
