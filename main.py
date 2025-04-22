@@ -108,13 +108,18 @@ def ajustar_quantidade(par, usdt_alvo, alavancagem, preco_atual):
     try:
         info = session.get_instruments_info(category="linear", symbol=par)
         filtro = info["result"]["list"][0]["lotSizeFilter"]
+        min_val = float(info["result"]["list"][0]["minOrderAmt"])
         step = float(filtro["qtyStep"])
         min_qty = float(filtro["minOrderQty"])
         qty_bruta = (usdt_alvo * alavancagem) / preco_atual
         precisao = abs(int(round(-np.log10(step), 0)))
         qty_final = round(qty_bruta, precisao)
+        valor_total = qty_final * preco_atual
         if qty_final < min_qty:
             print(f"❌ Quantidade abaixo do mínimo ({qty_final} < {min_qty})")
+            return None
+        if valor_total < min_val:
+            print(f"❌ Valor da ordem abaixo do mínimo exigido ({valor_total:.2f} < {min_val})")
             return None
         return qty_final
     except Exception as e:
@@ -191,5 +196,6 @@ if __name__ == "__main__":
     threading.Thread(target=monitorar_mercado).start()
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
+
 
 
