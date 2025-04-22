@@ -52,36 +52,64 @@ def historico():
     html += "</ul>"
     return html
 
-# ... as funções anteriores continuam aqui ...
+# A função monitorar_mercado com o bloco de entrada corrigido:
+def monitorar_mercado():
+    while True:
+        try:
+            par = random.choice(["BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "MATICUSDT",
+                                "AVAXUSDT", "LINKUSDT", "TONUSDT", "FETUSDT", "ADAUSDT",
+                                "RNDRUSDT", "SHIB1000USDT"])
+            print(f"Analisando {par}...")
+            candles_raw = session.get_kline(
+                category="linear",
+                symbol=par,
+                interval="1",
+                limit=50
+            )["result"]["list"]
+            if not candles_raw or len(candles_raw) < 20:
+                print(f"Poucos dados em {par}, a ignorar...")
+                time.sleep(1)
+                continue
 
-# Dentro da função monitorar_mercado(), logo após uma entrada real:
-# Adiciona esta linha dentro do bloco que executa a entrada real:
-# historico_resultados.append(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | {par} | sinais={len(sinais)} | coerente={coerente} | tendência={tendencia}")
+            # Aqui você deve colocar a função calcular_indicadores e obter sinais, tendência, etc.
+            # sinais, tendencia, candle_confirma, coerente = calcular_indicadores(candles_raw)
 
-# Substituir o bloco de entrada real por este:
-if 5 <= len(sinais) <= 12 and tendencia in ["alta", "baixa"] and candle_confirma and coerente:
-    preco_atual = float(candles_raw[-1][4])
-    usdt_alvo = 2
-    alavancagem = 2
-    qty = ajustar_quantidade(par, usdt_alvo, alavancagem, preco_atual)
-    if qty is None:
-        time.sleep(1)
-        continue
-    res = session.place_order(
-        category="linear",
-        symbol=par,
-        side="Buy",
-        orderType="Market",
-        qty=qty,
-        leverage=alavancagem
-    )
-    historico_resultados.append(
-        f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | {par} | sinais={len(sinais)} | coerente={coerente} | tendência={tendencia}"
-    )
-    print(f"ENTRADA REAL: {par} | Qty: {qty} | Preço: {preco_atual} | Sinais: {len(sinais)} | Tendência: {tendencia}")
-    time.sleep(5)
-    aplicar_tp_sl(par, preco_atual)
+            # Simulando os valores para não quebrar o código
+            sinais = ["MACD", "EMA", "Momentum"]
+            tendencia = "alta"
+            candle_confirma = True
+            coerente = sum(indicador in sinais for indicador in ["RSI", "MACD", "Stoch"]) >= 1
 
-# Atualizar coerência para exigir apenas 1 dos principais indicadores
-coerente = sum(indicador in sinais for indicador in ["RSI", "MACD", "Stoch"]) >= 1
+            if 5 <= len(sinais) <= 12 and tendencia in ["alta", "baixa"] and candle_confirma and coerente:
+                preco_atual = float(candles_raw[-1][4])
+                usdt_alvo = 2
+                alavancagem = 2
+                qty = ajustar_quantidade(par, usdt_alvo, alavancagem, preco_atual)
+                if qty is None:
+                    print("Quantidade inválida, ignorando entrada.")
+                    time.sleep(1)
+                    continue
+                res = session.place_order(
+                    category="linear",
+                    symbol=par,
+                    side="Buy",
+                    orderType="Market",
+                    qty=qty,
+                    leverage=alavancagem
+                )
+                historico_resultados.append(
+                    f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | {par} | sinais={len(sinais)} | coerente={coerente} | tendência={tendencia}"
+                )
+                print(f"ENTRADA REAL: {par} | Qty: {qty} | Preço: {preco_atual} | Sinais: {len(sinais)} | Tendência: {tendencia}")
+                time.sleep(5)
+                aplicar_tp_sl(par, preco_atual)
+            time.sleep(1)
+        except Exception as e:
+            print(f"Erro: {str(e)}")
+            time.sleep(2)
 
+# Início da execução
+if __name__ == "__main__":
+    threading.Thread(target=monitorar_mercado).start()
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
