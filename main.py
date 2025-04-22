@@ -134,8 +134,23 @@ def calcular_indicadores(candles):
 
 def ajustar_quantidade(par, usdt_alvo, alavancagem, preco):
     try:
-        return round((usdt_alvo * alavancagem) / preco, 3)
-    except:
+        precisao = {
+            "LINKUSDT": 2,
+            "BTCUSDT": 5,
+            "ETHUSDT": 4,
+            "AVAXUSDT": 2,
+            "MATICUSDT": 2,
+            "FETUSDT": 1,
+            "DOGEUSDT": 0,
+            "SHIB1000USDT": 0,
+            "SOLUSDT": 2,
+            "RNDRUSDT": 1
+        }.get(par, 2)  # Default: 2 casas decimais
+
+        raw_qty = (usdt_alvo * alavancagem) / preco
+        return round(raw_qty, precisao)
+    except Exception as e:
+        print(f"❌ Erro ao calcular quantidade: {e}")
         return None
 
 def monitorar_mercado():
@@ -165,6 +180,7 @@ def monitorar_mercado():
                 if qty is None:
                     time.sleep(1)
                     continue
+                print(f"🧾 Enviando ordem para {par} com qty={qty}")
                 session.place_order(
                     category="linear",
                     symbol=par,
@@ -202,3 +218,4 @@ if __name__ == "__main__":
     threading.Thread(target=monitorar_mercado).start()
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
+
