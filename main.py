@@ -21,7 +21,7 @@ session = HTTP(
 
 @app.route("/")
 def home():
-    return "SukachBot CRYPTO PRO ativo com TP/SL 100% garantido! 💹"
+    return "SukachBot CRYPTO PRO ativo com TP/SL 100% garantido! 📉"
 
 @app.route("/saldo")
 def saldo():
@@ -157,25 +157,29 @@ def monitorar_mercado():
                 continue
             sinais = calcular_indicadores(candles_raw)
             print(f"🔎 Indicadores alinhados: {len(sinais)} ➝ {sinais}")
-            if len(sinais) >= 6:
+            if 5 <= len(sinais) <= 12:
                 preco_atual = float(candles_raw[-1][4])
-                usdt_alvo = 5
-                alavancagem = 4
+                usdt_alvo = 2
+                alavancagem = 2
                 qty = ajustar_quantidade(par, usdt_alvo, alavancagem, preco_atual)
                 if qty is None:
                     time.sleep(1)
                     continue
                 take_profit = round(preco_atual * 1.03, 3)
                 stop_loss = round(preco_atual * 0.99, 3)
-                res = session.place_order(
-                    category="linear",
-                    symbol=par,
-                    side="Buy",
-                    orderType="Market",
-                    qty=qty,
-                    leverage=alavancagem
-                )
-                print(f"🚀 ENTRADA REAL: {par} | Qty: {qty} | TP: {take_profit} | SL: {stop_loss} | Sinais: {len(sinais)}")
+                try:
+                    res = session.place_order(
+                        category="linear",
+                        symbol=par,
+                        side="Buy",
+                        orderType="Market",
+                        qty=qty,
+                        leverage=alavancagem
+                    )
+                    print(f"🚀 ENTRADA REAL: {par} | Qty: {qty} | TP: {take_profit} | SL: {stop_loss} | Sinais: {len(sinais)}")
+                except Exception as e:
+                    print(f"❌ ERRO ao enviar ordem: {e}")
+                    continue
                 time.sleep(3)
                 aplicar_tp_sl(par, take_profit, stop_loss)
             time.sleep(1)
@@ -187,4 +191,5 @@ if __name__ == "__main__":
     threading.Thread(target=monitorar_mercado).start()
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
+
 
