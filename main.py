@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 from pybit.unified_trading import HTTP
 from datetime import datetime
+import requests
 
 app = Flask(__name__)
 
@@ -54,6 +55,17 @@ def historico():
         html += f"<li>{item}</li>"
     html += "</ul>"
     return html
+
+def manter_ativo():
+    def pingar():
+        while True:
+            try:
+                requests.get("https://sukachbot-crypto-production.up.railway.app/")
+                print("🔄 Ping de atividade enviado para manter o bot online")
+            except:
+                pass
+            time.sleep(240)
+    threading.Thread(target=pingar, daemon=True).start()
 
 def monitorar_mercado():
     while True:
@@ -109,12 +121,21 @@ def monitorar_mercado():
                     leverage=alavancagem
                 )
                 historico_resultados.append(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | {par} | sinais={len(sinais)} | coerente={coerente} | tendência={tendencia}")
-                print(f"🚀 ENTRADA EXECUTADA: {par} | Qty: {qty} | Valor: ${usdt_alvo} | Sinais: {len(sinais)} | Tendência: {tendencia}")
+                print(f"✅ CONFIRMADO NO VERDE: ENTRADA FEITA EM {par} | Qty: {qty} | Valor: ${usdt_alvo} | Indicadores: {len(sinais)} | Tendência: {tendencia}")
                 aplicar_tp_sl(par, preco_atual)
                 time.sleep(5)
             time.sleep(1)
         except Exception as e:
-            print(f"Erro: {str(e)}")
+            erro = f"Erro crítico detectado: {str(e)}"
+            print(erro)
+            try:
+                with open("erro_sukachbot.log", "a") as f:
+                    f.write(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} - {erro}\n")
+            except:
+                pass
             time.sleep(2)
 
+manter_ativo()
+
 # As outras funções continuam (calcular_indicadores, aplicar_tp_sl, etc.)
+
