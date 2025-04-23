@@ -164,8 +164,8 @@ def monitorar_mercado():
 
             print(f"Indicadores: {len(sinais)} ➝ {sinais} | Tendência: {tendencia} | Candle confirma: {candle_confirma} | Coerente: {coerente}")
 
-            if not (5 <= len(sinais) <= 12):
-                print("⛔ Não entrou: número de sinais fora do intervalo (5-12)")
+            if not (4 <= len(sinais) <= 12):
+                print("⛔ Não entrou: número de sinais fora do intervalo (4-12)")
             if tendencia not in ["alta", "baixa"]:
                 print("⛔ Não entrou: tendência é lateral")
             if not candle_confirma:
@@ -173,7 +173,7 @@ def monitorar_mercado():
             if not coerente:
                 print("⛔ Não entrou: nenhum dos 3 principais indicadores (RSI, MACD, Stoch) presente — exigido mínimo 1")
 
-            if 5 <= len(sinais) <= 12 and tendencia in ["alta", "baixa"] and candle_confirma and coerente:
+            if 4 <= len(sinais) <= 12 and tendencia in ["alta", "baixa"] and candle_confirma and coerente:
                 preco_atual = float(candles_raw[-1][4])
                 usdt_alvo = 3
                 alavancagem = 2
