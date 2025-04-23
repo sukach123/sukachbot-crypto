@@ -84,7 +84,7 @@ def ajustar_quantidade(par, usdt_alvo, alavancagem, preco_atual):
 
 def aplicar_tp_sl(par, preco_entrada):
     take_profit = round(preco_entrada * 1.01, 4)
-    stop_loss = round(preco_entrada * 0.997, 4)  # -0.3%
+    stop_loss = round(preco_entrada * 0.997, 4)
     trailing_ativado = False
     sucesso = False
 
@@ -102,7 +102,7 @@ def aplicar_tp_sl(par, preco_entrada):
             atual = float(posicoes[0].get("markPrice", preco_entrada))
             lucro_atual = (atual - preco_entrada) / preco_entrada
 
-            if lucro_atual > 0.006:  # lucro > +0.60%
+            if lucro_atual > 0.006:
                 novo_sl = round(atual * 0.997, 4)
                 stop_loss = max(stop_loss, novo_sl)
                 trailing_ativado = True
@@ -139,7 +139,6 @@ def monitorar_mercado():
 
             par = random.choice(pares_disponiveis)
 
-            # Obter candle com verificação
             kline_data = session.get_kline(
                 category="linear",
                 symbol=par,
@@ -159,12 +158,23 @@ def monitorar_mercado():
 
             try:
                 wallet = session.get_wallet_balance(accountType="UNIFIED")
-                coins = wallet["result"]["list"][0]["coin"]
-                usdt_coin = next((c for c in coins if c["coin"] == "USDT"), None)
-                saldo_str = usdt_coin.get("availableToWithdraw", "0") if usdt_coin else "0"
-                saldo_total = float(saldo_str or 0)
+                print("🔍 RESPOSTA COMPLETA DO SALDO:", wallet)
+
+                coins = wallet.get("result", {}).get("list", [])[0].get("coin", [])
+
+                saldo_total = 0
+                for c in coins:
+                    if c.get("coin") == "USDT":
+                        try:
+                            saldo_total = float(c.get("availableToWithdraw", "0") or 0)
+                        except Exception as e:
+                            print(f"Erro ao converter saldo: {e}")
+                        break
+
+                print(f"💰 Saldo USDT detectado: {saldo_total}")
+
             except Exception as e:
-                print(f"Erro ao obter saldo disponível em USDT: {e}")
+                print(f"❌ Erro ao obter saldo disponível em USDT: {e}")
                 saldo_total = 0
 
             if saldo_total < usdt_alvo:
