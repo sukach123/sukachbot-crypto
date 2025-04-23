@@ -1,5 +1,4 @@
-# main.py - SukachBot CRYPTO PRO com lógica PRO (indicadores + candle)
-
+# main.py atualizado com módulo de indicadores e detecção de candle
 from flask import Flask
 import os
 import time
@@ -10,8 +9,9 @@ import pandas as pd
 from pybit.unified_trading import HTTP
 from datetime import datetime
 import requests
+
+from indicadores import analisar_indicadores
 from estrutura_candle import detectar_direcao_candle
-# from indicadores import analisar_indicadores (em breve)
 
 app = Flask(__name__)
 
@@ -34,6 +34,7 @@ def home():
 def saldo():
     try:
         response = session.get_wallet_balance(accountType="UNIFIED")
+        print("🔍 DEBUG saldo:", response)
         coins = response["result"]["list"][0]["coin"]
         output = "<h2>Saldo Atual:</h2><ul>"
         for coin in coins:
@@ -147,19 +148,34 @@ def monitorar_mercado():
                 category="linear",
                 symbol=par,
                 interval="1",
-                limit=2
+                limit=100
             )["result"]["list"]
 
-            if not kline_data:
-                print(f"⚠️ Nenhum candle retornado para {par}, a saltar...")
+            if len(kline_data) < 30:
+                print(f"⚠️ Poucos candles retornados para {par}, a saltar...")
                 time.sleep(2)
                 continue
 
             preco_atual = float(kline_data[-1][4])
-
             direcao = detectar_direcao_candle(kline_data[-2], kline_data[-1])
+            print(f"📊 Candle atual: {direcao}")
+
             if direcao == "Neutro":
-                print("⚪ Candle neutro detectado — ignorado.")
+                print("⏭️ Candle Neutro — sem entrada.")
+                time.sleep(2)
+                continue
+
+            df = pd.DataFrame(kline_data, columns=["timestamp","open","high","low","close","volume"])
+            df = df.astype({"open": float, "high": float, "low": float, "close": float})
+
+            sinais = analisar_indicadores(df)
+            print(f"📈 Indicadores alinhados: {sinais}")
+
+            essenciais = ["RSI", "MACD", "EMA", "CCI", "ADX"]
+            tem_essencial = any(x in sinais for x in essenciais)
+
+            if len(sinais) < 4 or not tem_essencial:
+                print("❌ Sinais insuficientes ou nenhum essencial — sem entrada.")
                 time.sleep(2)
                 continue
 
@@ -175,13 +191,15 @@ def monitorar_mercado():
                     nome_moeda = c.get("moeda") or c.get("coin")
                     if nome_moeda == "USDT":
                         saldo_str = c.get("availableToWithdraw") or c.get("walletBalance") or c.get("equity") or "0"
-                        saldo_total = float(saldo_str.replace(",", "."))
+                        try:
+                            saldo_total = float(saldo_str.replace(",", "."))
+                        except:
+                            pass
                         break
 
                 print(f"💰 Saldo USDT aprovado: {saldo_total}")
 
-            except Exception as e:
-                print(f"❌ Erro ao obter saldo disponível em USDT: {e}")
+            except:
                 saldo_total = 0
 
             if saldo_total < usdt_alvo:
@@ -204,7 +222,7 @@ def monitorar_mercado():
             )
 
             historico_resultados.append(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | {par} | Entrada {direcao} | Qty={qty}")
-            print(f"🚀 ENTRADA REAL: {par} | Qty: {qty} | Preço: {preco_atual} | Direção: {direcao}")
+            print(f"🚀 ENTRADA REAL: {par} | Direção: {direcao} | Qty: {qty} | Preço: {preco_atual}")
             time.sleep(5)
             aplicar_tp_sl(par, preco_atual)
 
@@ -217,3 +235,4 @@ if __name__ == "__main__":
     threading.Thread(target=monitorar_mercado, daemon=True).start()
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
+
