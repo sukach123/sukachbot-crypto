@@ -30,12 +30,13 @@ def home():
 def saldo():
     try:
         response = session.get_wallet_balance(accountType="UNIFIED")
+        print("🔍 DEBUG saldo:", response)
         coins = response["result"]["list"][0]["coin"]
         output = "<h2>Saldo Atual:</h2><ul>"
         for coin in coins:
             value = coin.get("availableToWithdraw", "0")
             try:
-                balance = float(value or 0)
+                balance = float(value)
                 if balance > 0:
                     output += f"<li>{coin['coin']}: {balance}</li>"
             except ValueError:
@@ -68,8 +69,8 @@ def ajustar_quantidade(par, usdt_alvo, alavancagem, preco_atual):
     try:
         info = session.get_instruments_info(category="linear", symbol=par)
         filtro = info["result"]["list"][0]["lotSizeFilter"]
-        step = float(filtro.get("qtyStep") or 0.001)
-        min_qty = float(filtro.get("minOrderQty") or 0.001)
+        step = float(filtro["qtyStep"])
+        min_qty = float(filtro["minOrderQty"])
         qty_bruta = (usdt_alvo * alavancagem) / preco_atual
         precisao = abs(int(round(-np.log10(step), 0)))
         qty_final = round(qty_bruta, precisao)
@@ -83,13 +84,13 @@ def ajustar_quantidade(par, usdt_alvo, alavancagem, preco_atual):
 
 def aplicar_tp_sl(par, preco_entrada):
     take_profit = round(preco_entrada * 1.01, 4)
-    stop_loss = round(preco_entrada * 0.997, 4)
+    stop_loss = round(preco_entrada * 0.997, 4)  # -0.3%
     trailing_ativado = False
     sucesso = False
 
     for tentativa in range(3):
         try:
-            posicoes = session.get_positions(category="linear", symbol=par)["result"].get("list", [])
+            posicoes = session.get_positions(category="linear", symbol=par)["result"]["list"]
             if posicoes and (
                 posicoes[0].get("takeProfit") == str(take_profit) and
                 posicoes[0].get("stopLoss") == str(stop_loss)
@@ -98,10 +99,10 @@ def aplicar_tp_sl(par, preco_entrada):
                 sucesso = True
                 break
 
-            atual = float(posicoes[0].get("markPrice") or preco_entrada)
+            atual = float(posicoes[0].get("markPrice", preco_entrada))
             lucro_atual = (atual - preco_entrada) / preco_entrada
 
-            if lucro_atual > 0.006:
+            if lucro_atual > 0.006:  # lucro > +0.60%
                 novo_sl = round(atual * 0.997, 4)
                 stop_loss = max(stop_loss, novo_sl)
                 trailing_ativado = True
@@ -114,7 +115,7 @@ def aplicar_tp_sl(par, preco_entrada):
             )
 
             if response.get("retCode") == 0:
-                print(f"TP/SL definidos: TP={take_profit} | SL={stop_loss} {'(Trailing SL ativo)' if trailing_ativado else ''}")
+                print(f"✅ TP/SL definidos: TP={take_profit} | SL={stop_loss} {'(Trailing SL ativo)' if trailing_ativado else ''}")
                 sucesso = True
                 break
             else:
@@ -124,18 +125,21 @@ def aplicar_tp_sl(par, preco_entrada):
             time.sleep(1)
 
     if not sucesso:
-        print("Não foi possível aplicar TP/SL após 3 tentativas! Reagendando nova tentativa em 15 segundos...")
+        print("⚠️ Não foi possível aplicar TP/SL após 3 tentativas. Nova tentativa em 15 segundos...")
         threading.Timer(15, aplicar_tp_sl, args=(par, preco_entrada)).start()
 
 def monitorar_mercado():
     while True:
         try:
-            par = random.choice([
+            pares_disponiveis = [
                 "BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "MATICUSDT",
                 "AVAXUSDT", "LINKUSDT", "TONUSDT", "FETUSDT", "ADAUSDT",
                 "RNDRUSDT", "SHIB1000USDT"
-            ])
+            ]
 
+            par = random.choice(pares_disponiveis)
+
+            # Obter candle com verificação
             kline_data = session.get_kline(
                 category="linear",
                 symbol=par,
@@ -148,8 +152,7 @@ def monitorar_mercado():
                 time.sleep(2)
                 continue
 
-            preco_atual_str = kline_data[-1][4]
-            preco_atual = float(preco_atual_str or 0)
+            preco_atual = float(kline_data[-1][4])
 
             usdt_alvo = 3
             alavancagem = 2
