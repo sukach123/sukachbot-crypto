@@ -140,7 +140,7 @@ def calcular_indicadores(candles):
 
     coerente = sum(indicador in sinais for indicador in ["RSI", "MACD", "Stoch"]) >= 1
 
-    return sinais, tendencia, candle_confirma, coerente  # substituído para brevidade
+    return sinais, tendencia, candle_confirma, coerente
 
 def monitorar_mercado():
     while True:
@@ -164,8 +164,8 @@ def monitorar_mercado():
 
             print(f"Indicadores: {len(sinais)} ➝ {sinais} | Tendência: {tendencia} | Candle confirma: {candle_confirma} | Coerente: {coerente}")
 
-            if not (4 <= len(sinais) <= 12):
-                print("⛔ Não entrou: número de sinais fora do intervalo (4-12)")
+            if not (5 <= len(sinais) <= 12):
+                print("⛔ Não entrou: número de sinais fora do intervalo (5-12)")
             if tendencia not in ["alta", "baixa"]:
                 print("⛔ Não entrou: tendência é lateral")
             if not candle_confirma:
@@ -173,9 +173,9 @@ def monitorar_mercado():
             if not coerente:
                 print("⛔ Não entrou: nenhum dos 3 principais indicadores (RSI, MACD, Stoch) presente — exigido mínimo 1")
 
-            if 4 <= len(sinais) <= 12 and tendencia in ["alta", "baixa"] and candle_confirma and coerente:
+            if 5 <= len(sinais) <= 12 and tendencia in ["alta", "baixa"] and candle_confirma and coerente:
                 preco_atual = float(candles_raw[-1][4])
-                usdt_alvo = 2
+                usdt_alvo = 3
                 alavancagem = 2
                 qty = ajustar_quantidade(par, usdt_alvo, alavancagem, preco_atual)
                 if qty is None:
@@ -199,7 +199,7 @@ def monitorar_mercado():
             time.sleep(1)
         except Exception as e:
             print(f"Erro: {str(e)}")
-            time.sleep(2)  # substituído para brevidade
+            time.sleep(2)
 
 def ajustar_quantidade(par, usdt_alvo, alavancagem, preco_atual):
     try:
@@ -216,7 +216,7 @@ def ajustar_quantidade(par, usdt_alvo, alavancagem, preco_atual):
         return qty_final
     except Exception as e:
         print(f"Erro ao ajustar quantidade: {e}")
-        return None  # substituído para brevidade
+        return None
 
 def aplicar_tp_sl(par, preco_atual):
     take_profit = round(preco_atual * 1.03, 4)
@@ -237,11 +237,12 @@ def aplicar_tp_sl(par, preco_atual):
             print(f"Falha ao aplicar TP/SL (tentativa {tentativa+1}): {e}")
             time.sleep(1)
     if not sucesso:
-        print("Não foi possível aplicar TP/SL após 3 tentativas!")  # substituído para brevidade
+        print("Não foi possível aplicar TP/SL após 3 tentativas!")
 
 if __name__ == "__main__":
     manter_ativo()
     threading.Thread(target=monitorar_mercado).start()
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
+
 
