@@ -7,7 +7,6 @@ import numpy as np
 import pandas as pd
 from pybit.unified_trading import HTTP
 from datetime import datetime
-import requests
 
 app = Flask(__name__)
 
@@ -110,5 +109,4 @@ def monitorar_mercado():
         except Exception as e:
             print(f"Erro: {str(e)}")
             time.sleep(2)
-
 
