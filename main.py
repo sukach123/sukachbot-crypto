@@ -35,7 +35,7 @@ def saldo():
         for coin in coins:
             value = coin.get("availableToWithdraw", "0")
             try:
-                balance = float(value)
+                balance = float(value or 0)
                 if balance > 0:
                     output += f"<li>{coin['coin']}: {balance}</li>"
             except ValueError:
@@ -68,8 +68,8 @@ def ajustar_quantidade(par, usdt_alvo, alavancagem, preco_atual):
     try:
         info = session.get_instruments_info(category="linear", symbol=par)
         filtro = info["result"]["list"][0]["lotSizeFilter"]
-        step = float(filtro["qtyStep"])
-        min_qty = float(filtro["minOrderQty"])
+        step = float(filtro.get("qtyStep") or 0.001)
+        min_qty = float(filtro.get("minOrderQty") or 0.001)
         qty_bruta = (usdt_alvo * alavancagem) / preco_atual
         precisao = abs(int(round(-np.log10(step), 0)))
         qty_final = round(qty_bruta, precisao)
@@ -82,14 +82,14 @@ def ajustar_quantidade(par, usdt_alvo, alavancagem, preco_atual):
         return None
 
 def aplicar_tp_sl(par, preco_entrada):
-    take_profit = round(preco_entrada * 1.03, 4)
-    stop_loss = round(preco_entrada * 0.985, 4)
+    take_profit = round(preco_entrada * 1.01, 4)
+    stop_loss = round(preco_entrada * 0.997, 4)
     trailing_ativado = False
     sucesso = False
 
     for tentativa in range(3):
         try:
-            posicoes = session.get_positions(category="linear", symbol=par)["result"]["list"]
+            posicoes = session.get_positions(category="linear", symbol=par)["result"].get("list", [])
             if posicoes and (
                 posicoes[0].get("takeProfit") == str(take_profit) and
                 posicoes[0].get("stopLoss") == str(stop_loss)
@@ -98,11 +98,11 @@ def aplicar_tp_sl(par, preco_entrada):
                 sucesso = True
                 break
 
-            atual = float(posicoes[0].get("markPrice", preco_entrada))
+            atual = float(posicoes[0].get("markPrice") or preco_entrada)
             lucro_atual = (atual - preco_entrada) / preco_entrada
 
-            if lucro_atual > 0.02:
-                novo_sl = round(atual * 0.99, 4)
+            if lucro_atual > 0.006:
+                novo_sl = round(atual * 0.997, 4)
                 stop_loss = max(stop_loss, novo_sl)
                 trailing_ativado = True
 
@@ -133,17 +133,19 @@ def monitorar_mercado():
             par = random.choice(["BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "MATICUSDT",
                                 "AVAXUSDT", "LINKUSDT", "TONUSDT", "FETUSDT", "ADAUSDT",
                                 "RNDRUSDT", "SHIB1000USDT"])
-            preco_atual = float(session.get_kline(
+            preco_atual_str = session.get_kline(
                 category="linear",
                 symbol=par,
                 interval="1",
                 limit=2
-            )["result"]["list"][-1][4])
+            )["result"]["list"][-1][4]
+            preco_atual = float(preco_atual_str or 0)
 
             usdt_alvo = 3
             alavancagem = 2
 
-            saldo_total = float(session.get_wallet_balance(accountType="UNIFIED")["result"]["list"][0]["coin"][0]["availableToWithdraw"])
+            saldo_str = session.get_wallet_balance(accountType="UNIFIED")["result"]["list"][0]["coin"][0].get("availableToWithdraw", "0")
+            saldo_total = float(saldo_str or 0)
             if saldo_total < usdt_alvo:
                 print(f"❌ Saldo insuficiente ({saldo_total} < {usdt_alvo}) — não vai entrar.")
                 time.sleep(2)
@@ -177,4 +179,3 @@ if __name__ == "__main__":
     threading.Thread(target=monitorar_mercado, daemon=True).start()
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
-
