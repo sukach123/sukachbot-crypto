@@ -90,28 +90,35 @@ def aplicar_tp_sl(par, preco_entrada):
     for tentativa in range(3):
         try:
             posicoes = session.get_positions(category="linear", symbol=par)["result"]["list"]
-            if posicoes:
-                atual = float(posicoes[0].get("markPrice", preco_entrada))
-                lucro_atual = (atual - preco_entrada) / preco_entrada
+            if posicoes and (
+                posicoes[0].get("takeProfit") == str(take_profit) and
+                posicoes[0].get("stopLoss") == str(stop_loss)
+            ):
+                print("TP/SL já definidos corretamente, sem alterações.")
+                sucesso = True
+                break
 
-                if lucro_atual > 0.02:
-                    novo_sl = round(atual * 0.99, 4)
-                    stop_loss = max(stop_loss, novo_sl)
-                    trailing_ativado = True
+            atual = float(posicoes[0].get("markPrice", preco_entrada))
+            lucro_atual = (atual - preco_entrada) / preco_entrada
 
-                response = session.set_trading_stop(
-                    category="linear",
-                    symbol=par,
-                    takeProfit=take_profit,
-                    stopLoss=stop_loss
-                )
+            if lucro_atual > 0.02:
+                novo_sl = round(atual * 0.99, 4)
+                stop_loss = max(stop_loss, novo_sl)
+                trailing_ativado = True
 
-                if response.get("retCode") == 0:
-                    print(f"TP/SL definidos: TP={take_profit} | SL={stop_loss} {'(Trailing SL ativo)' if trailing_ativado else ''}")
-                    sucesso = True
-                    break
-                else:
-                    print(f"Erro ao aplicar TP/SL: {response}")
+            response = session.set_trading_stop(
+                category="linear",
+                symbol=par,
+                takeProfit=take_profit,
+                stopLoss=stop_loss
+            )
+
+            if response.get("retCode") == 0:
+                print(f"TP/SL definidos: TP={take_profit} | SL={stop_loss} {'(Trailing SL ativo)' if trailing_ativado else ''}")
+                sucesso = True
+                break
+            else:
+                print(f"Erro ao aplicar TP/SL: {response}")
         except Exception as e:
             print(f"Falha ao aplicar TP/SL (tentativa {tentativa+1}): {e}")
             time.sleep(1)
