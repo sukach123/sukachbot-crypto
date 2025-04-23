@@ -64,6 +64,23 @@ def manter_ativo():
             time.sleep(300)
     threading.Thread(target=pingar, daemon=True).start()
 
+def ajustar_quantidade(par, usdt_alvo, alavancagem, preco_atual):
+    try:
+        info = session.get_instruments_info(category="linear", symbol=par)
+        filtro = info["result"]["list"][0]["lotSizeFilter"]
+        step = float(filtro["qtyStep"])
+        min_qty = float(filtro["minOrderQty"])
+        qty_bruta = (usdt_alvo * alavancagem) / preco_atual
+        precisao = abs(int(round(-np.log10(step), 0)))
+        qty_final = round(qty_bruta, precisao)
+        if qty_final < min_qty:
+            print(f"Quantidade abaixo do mínimo ({qty_final} < {min_qty})")
+            return None
+        return qty_final
+    except Exception as e:
+        print(f"Erro ao ajustar quantidade: {e}")
+        return None
+
 def aplicar_tp_sl(par, preco_entrada):
     take_profit = round(preco_entrada * 1.03, 4)
     stop_loss = round(preco_entrada * 0.985, 4)
@@ -77,9 +94,8 @@ def aplicar_tp_sl(par, preco_entrada):
                 atual = float(posicoes[0].get("markPrice", preco_entrada))
                 lucro_atual = (atual - preco_entrada) / preco_entrada
 
-                # Ativar trailing stop se lucro > 2%
                 if lucro_atual > 0.02:
-                    novo_sl = round(atual * 0.99, 4)  # trailing SL = -1% abaixo do preço atual
+                    novo_sl = round(atual * 0.99, 4)
                     stop_loss = max(stop_loss, novo_sl)
                     trailing_ativado = True
 
@@ -119,7 +135,10 @@ def monitorar_mercado():
 
             usdt_alvo = 3
             alavancagem = 2
-            qty = round((usdt_alvo * alavancagem) / preco_atual, 3)
+            qty = ajustar_quantidade(par, usdt_alvo, alavancagem, preco_atual)
+            if qty is None:
+                time.sleep(2)
+                continue
 
             session.place_order(
                 category="linear",
@@ -144,4 +163,3 @@ if __name__ == "__main__":
     threading.Thread(target=monitorar_mercado, daemon=True).start()
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
-
