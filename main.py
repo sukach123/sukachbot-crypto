@@ -168,12 +168,12 @@ def monitorar_mercado():
                 print("⛔ Não entrou: número de sinais fora do intervalo (4-12)")
             if tendencia not in ["alta", "baixa"]:
                 print("⛔ Não entrou: tendência é lateral")
-            if not candle_confirma:
+            if len(sinais) != 5 and not candle_confirma:
                 print("⛔ Não entrou: candle não confirma a tendência")
             if not coerente:
                 print("⛔ Não entrou: nenhum dos 3 principais indicadores (RSI, MACD, Stoch) presente — exigido mínimo 1")
 
-            if 4 <= len(sinais) <= 12 and tendencia in ["alta", "baixa"] and candle_confirma and coerente:
+            if 4 <= len(sinais) <= 12 and tendencia in ["alta", "baixa"] and (candle_confirma or len(sinais) == 5) and coerente:
                 preco_atual = float(candles_raw[-1][4])
                 usdt_alvo = 3
                 alavancagem = 2
@@ -244,5 +244,6 @@ if __name__ == "__main__":
     threading.Thread(target=monitorar_mercado).start()
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
+
 
 
