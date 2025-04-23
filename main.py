@@ -104,3 +104,9 @@ def aplicar_tp_sl(par, preco_entrada):
         print("Não foi possível aplicar TP/SL após 3 tentativas! Reagendando nova tentativa em 15 segundos...")
         threading.Timer(15, aplicar_tp_sl, args=(par, preco_entrada)).start()
 
+if __name__ == "__main__":
+    manter_ativo()
+    threading.Thread(target=lambda: print("🔍 Bot iniciado - aguardando lógica de mercado"), daemon=True).start()
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
+
