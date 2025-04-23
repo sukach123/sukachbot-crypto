@@ -20,7 +20,7 @@ session = HTTP(
     testnet=False
 )
 
-historico_resultados = []  # lista para guardar os registos das operações
+historico_resultados = []
 
 @app.route("/")
 def home():
@@ -130,22 +130,40 @@ def aplicar_tp_sl(par, preco_entrada):
 def monitorar_mercado():
     while True:
         try:
-            par = random.choice(["BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "MATICUSDT",
-                                "AVAXUSDT", "LINKUSDT", "TONUSDT", "FETUSDT", "ADAUSDT",
-                                "RNDRUSDT", "SHIB1000USDT"])
-            preco_atual_str = session.get_kline(
+            par = random.choice([
+                "BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "MATICUSDT",
+                "AVAXUSDT", "LINKUSDT", "TONUSDT", "FETUSDT", "ADAUSDT",
+                "RNDRUSDT", "SHIB1000USDT"
+            ])
+
+            kline_data = session.get_kline(
                 category="linear",
                 symbol=par,
                 interval="1",
                 limit=2
-            )["result"]["list"][-1][4]
+            )["result"]["list"]
+
+            if not kline_data:
+                print(f"⚠️ Nenhum candle retornado para {par}, a saltar...")
+                time.sleep(2)
+                continue
+
+            preco_atual_str = kline_data[-1][4]
             preco_atual = float(preco_atual_str or 0)
 
             usdt_alvo = 3
             alavancagem = 2
 
-            saldo_str = session.get_wallet_balance(accountType="UNIFIED")["result"]["list"][0]["coin"][0].get("availableToWithdraw", "0")
-            saldo_total = float(saldo_str or 0)
+            try:
+                wallet = session.get_wallet_balance(accountType="UNIFIED")
+                coins = wallet["result"]["list"][0]["coin"]
+                usdt_coin = next((c for c in coins if c["coin"] == "USDT"), None)
+                saldo_str = usdt_coin.get("availableToWithdraw", "0") if usdt_coin else "0"
+                saldo_total = float(saldo_str or 0)
+            except Exception as e:
+                print(f"Erro ao obter saldo disponível em USDT: {e}")
+                saldo_total = 0
+
             if saldo_total < usdt_alvo:
                 print(f"❌ Saldo insuficiente ({saldo_total} < {usdt_alvo}) — não vai entrar.")
                 time.sleep(2)
@@ -179,3 +197,4 @@ if __name__ == "__main__":
     threading.Thread(target=monitorar_mercado, daemon=True).start()
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
+
