@@ -142,6 +142,13 @@ def monitorar_mercado():
 
             usdt_alvo = 3
             alavancagem = 2
+
+            saldo_total = float(session.get_wallet_balance(accountType="UNIFIED")["result"]["list"][0]["coin"][0]["availableToWithdraw"])
+            if saldo_total < usdt_alvo:
+                print(f"❌ Saldo insuficiente ({saldo_total} < {usdt_alvo}) — não vai entrar.")
+                time.sleep(2)
+                continue
+
             qty = ajustar_quantidade(par, usdt_alvo, alavancagem, preco_atual)
             if qty is None:
                 time.sleep(2)
