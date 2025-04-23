@@ -1,3 +1,7 @@
+# SukachBot CRYPTO PRO com entrada baseada em 4 a 12 indicadores + validação de direção
+# Entradas apenas se houver pelo menos 1 indicador "forte" confirmado (RSI, EMAs, MACD, CCI ou ADX)
+# Direção da vela confirmada como "Alta" ou "Baixa"
+
 from flask import Flask
 import os
 import time
@@ -8,6 +12,8 @@ import pandas as pd
 from pybit.unified_trading import HTTP
 from datetime import datetime
 import requests
+from indicadores import analisar_indicadores
+from estrutura_candle import detectar_direcao_candle
 
 app = Flask(__name__)
 
@@ -22,49 +28,8 @@ session = HTTP(
 
 historico_resultados = []
 
-@app.route("/")
-def home():
-    return "SukachBot CRYPTO PRO ativo com análise avançada de estrutura, tendência e coerência de sinais!"
-
-@app.route("/saldo")
-def saldo():
-    try:
-        response = session.get_wallet_balance(accountType="UNIFIED")
-        print("🔍 DEBUG saldo:", response)
-        coins = response["result"]["list"][0]["coin"]
-        output = "<h2>Saldo Atual:</h2><ul>"
-        for coin in coins:
-            nome_moeda = coin.get("moeda") or coin.get("coin", "???")
-            valor_saldo = coin.get("availableToWithdraw") or coin.get("walletBalance") or coin.get("equity") or "0"
-            try:
-                balance = float(valor_saldo.replace(",", "."))
-                if balance > 0:
-                    output += f"<li>{nome_moeda}: {balance}</li>"
-            except ValueError:
-                continue
-        output += "</ul>"
-        return output or "Sem saldo disponível."
-    except Exception as e:
-        return f"Erro ao obter saldo: {str(e)}"
-
-@app.route("/historico")
-def historico():
-    html = "<h2>Histórico de Entradas:</h2><ul>"
-    for item in historico_resultados[-50:]:
-        html += f"<li>{item}</li>"
-    html += "</ul>"
-    return html
-
-def manter_ativo():
-    def pingar():
-        while True:
-            try:
-                requests.get("https://sukachbot-crypto-production.up.railway.app/")
-                print("🔄 Ping de atividade enviado para manter o bot online")
-            except:
-                pass
-            time.sleep(300)
-    threading.Thread(target=pingar, daemon=True).start()
+MIN_INDICADORES = 4
+INDICADORES_OBRIGATORIOS = ["RSI", "EMAs", "MACD", "CCI", "ADX"]
 
 def ajustar_quantidade(par, usdt_alvo, alavancagem, preco_atual):
     try:
@@ -129,6 +94,27 @@ def aplicar_tp_sl(par, preco_entrada):
         print("⚠️ Não foi possível aplicar TP/SL após 3 tentativas. Nova tentativa em 15 segundos...")
         threading.Timer(15, aplicar_tp_sl, args=(par, preco_entrada)).start()
 
+
+def verificar_condicoes_entrada(par, candles):
+    resultado = analisar_indicadores(par, candles)
+    total_confirmados = sum(resultado.values())
+    confirmados = [k for k, v in resultado.items() if v]
+    obrigatorios_ok = any(ind in confirmados for ind in INDICADORES_OBRIGATORIOS)
+
+    direcao = detectar_direcao_candle(candles[-2], candles[-1])
+
+    if direcao == "Neutro":
+        print("⚪ Candle neutro detectado — ignorado.")
+        return False, 0, direcao, resultado
+
+    if total_confirmados >= MIN_INDICADORES and obrigatorios_ok:
+        print(f"📈 Direção: {direcao} ({total_confirmados}/12 sinais confirmados)")
+        return True, total_confirmados, direcao, resultado
+    else:
+        print(f"❌ Sinais insuficientes ou sem confirmador forte: {total_confirmados}/12")
+        return False, total_confirmados, direcao, resultado
+
+
 def monitorar_mercado():
     while True:
         try:
@@ -140,27 +126,25 @@ def monitorar_mercado():
 
             par = random.choice(pares_disponiveis)
 
-            kline_data = session.get_kline(
-                category="linear",
-                symbol=par,
-                interval="1",
-                limit=2
-            )["result"]["list"]
-
-            if not kline_data:
-                print(f"⚠️ Nenhum candle retornado para {par}, a saltar...")
+            dados = session.get_kline(category="linear", symbol=par, interval="1", limit=100)
+            candles = dados["result"]["list"]
+            if not candles or len(candles) < 2:
+                print(f"⚠️ Nenhum candle válido retornado para {par}, a saltar...")
                 time.sleep(2)
                 continue
 
-            preco_atual = float(kline_data[-1][4])
+            preco_atual = float(candles[-1][4])
+
+            pode_entrar, confirmados, direcao, sinais = verificar_condicoes_entrada(par, candles)
+            if not pode_entrar:
+                time.sleep(2)
+                continue
 
             usdt_alvo = 3
             alavancagem = 2
 
             try:
                 wallet = session.get_wallet_balance(accountType="UNIFIED")
-                print("🔍 RESPOSTA COMPLETA DO SALDO:", wallet)
-
                 coins = wallet.get("result", {}).get("list", [])[0].get("coin", [])
 
                 saldo_total = 0
@@ -168,10 +152,7 @@ def monitorar_mercado():
                     nome_moeda = c.get("moeda") or c.get("coin")
                     if nome_moeda == "USDT":
                         saldo_str = c.get("availableToWithdraw") or c.get("walletBalance") or c.get("equity") or "0"
-                        try:
-                            saldo_total = float(saldo_str.replace(",", "."))
-                        except Exception as e:
-                            print(f"Erro ao converter saldo: {e}")
+                        saldo_total = float(saldo_str.replace(",", "."))
                         break
 
                 print(f"💰 Saldo USDT aprovado: {saldo_total}")
@@ -193,14 +174,14 @@ def monitorar_mercado():
             session.place_order(
                 category="linear",
                 symbol=par,
-                side="Buy",
+                side="Buy" if direcao == "Alta" else "Sell",
                 orderType="Market",
                 qty=qty,
                 leverage=alavancagem
             )
 
-            historico_resultados.append(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | {par} | Entrada real | Qty={qty}")
-            print(f"🚀 ENTRADA REAL: {par} | Qty: {qty} | Preço: {preco_atual}")
+            historico_resultados.append(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | {par} | Entrada {direcao} | Qty={qty}")
+            print(f"🚀 ENTRADA REAL: {par} | Qty: {qty} | Preço: {preco_atual} | Direção: {direcao}")
             time.sleep(5)
             aplicar_tp_sl(par, preco_atual)
 
@@ -209,7 +190,6 @@ def monitorar_mercado():
         time.sleep(2)
 
 if __name__ == "__main__":
-    manter_ativo()
     threading.Thread(target=monitorar_mercado, daemon=True).start()
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
