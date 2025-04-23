@@ -77,9 +77,9 @@ def aplicar_tp_sl(par, preco_entrada):
                 atual = float(posicoes[0].get("markPrice", preco_entrada))
                 lucro_atual = (atual - preco_entrada) / preco_entrada
 
-                # Se lucro já passou 2%, ativa trailing stop
+                # Ativar trailing stop se lucro > 2%
                 if lucro_atual > 0.02:
-                    novo_sl = round(atual * 0.995, 4)  # trailing SL = -0.5% abaixo do preço atual
+                    novo_sl = round(atual * 0.99, 4)  # trailing SL = -1% abaixo do preço atual
                     stop_loss = max(stop_loss, novo_sl)
                     trailing_ativado = True
 
@@ -99,14 +99,19 @@ def aplicar_tp_sl(par, preco_entrada):
         except Exception as e:
             print(f"Falha ao aplicar TP/SL (tentativa {tentativa+1}): {e}")
             time.sleep(1)
-    
+
     if not sucesso:
         print("Não foi possível aplicar TP/SL após 3 tentativas! Reagendando nova tentativa em 15 segundos...")
         threading.Timer(15, aplicar_tp_sl, args=(par, preco_entrada)).start()
 
+def monitorar_mercado():
+    while True:
+        print("🟢 Monitoramento em execução...")
+        time.sleep(60)  # Apenas simulação para manter o bot ativo
+
 if __name__ == "__main__":
     manter_ativo()
-    threading.Thread(target=lambda: print("🔍 Bot iniciado - aguardando lógica de mercado"), daemon=True).start()
+    threading.Thread(target=monitorar_mercado, daemon=True).start()
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
 
