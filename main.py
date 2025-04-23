@@ -106,8 +106,38 @@ def aplicar_tp_sl(par, preco_entrada):
 
 def monitorar_mercado():
     while True:
-        print("🟢 Monitoramento em execução...")
-        time.sleep(60)  # Apenas simulação para manter o bot ativo
+        try:
+            par = random.choice(["BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "MATICUSDT",
+                                "AVAXUSDT", "LINKUSDT", "TONUSDT", "FETUSDT", "ADAUSDT",
+                                "RNDRUSDT", "SHIB1000USDT"])
+            preco_atual = float(session.get_kline(
+                category="linear",
+                symbol=par,
+                interval="1",
+                limit=2
+            )["result"]["list"][-1][4])
+
+            usdt_alvo = 3
+            alavancagem = 2
+            qty = round((usdt_alvo * alavancagem) / preco_atual, 3)
+
+            session.place_order(
+                category="linear",
+                symbol=par,
+                side="Buy",
+                orderType="Market",
+                qty=qty,
+                leverage=alavancagem
+            )
+
+            historico_resultados.append(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | {par} | Entrada real | Qty={qty}")
+            print(f"🚀 ENTRADA REAL: {par} | Qty: {qty} | Preço: {preco_atual}")
+            time.sleep(5)
+            aplicar_tp_sl(par, preco_atual)
+
+        except Exception as e:
+            print(f"Erro no monitoramento: {e}")
+        time.sleep(2)
 
 if __name__ == "__main__":
     manter_ativo()
