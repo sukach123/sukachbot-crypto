@@ -224,6 +224,11 @@ def aplicar_tp_sl(par, preco_atual):
     sucesso = False
     for tentativa in range(3):
         try:
+            posicoes = session.get_positions(category="linear", symbol=par)["result"]["list"]
+            if posicoes and posicoes[0].get("takeProfit") == str(take_profit) and posicoes[0].get("stopLoss") == str(stop_loss):
+                print("TP/SL já definidos corretamente, sem alterações.")
+                sucesso = True
+                break
             session.set_trading_stop(
                 category="linear",
                 symbol=par,
@@ -244,6 +249,5 @@ if __name__ == "__main__":
     threading.Thread(target=monitorar_mercado).start()
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
-
 
 
