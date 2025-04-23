@@ -97,6 +97,24 @@ def aplicar_tp_sl(par, preco_entrada):
         print("⚠️ Não foi possível aplicar TP/SL após 3 tentativas. Nova tentativa em 15 segundos...")
         threading.Timer(15, aplicar_tp_sl, args=(par, preco_entrada)).start()
 
+# === função de validação da quantidade com precisão ===
+def ajustar_quantidade(par, usdt_alvo, alavancagem, preco_atual):
+    try:
+        info = session.get_instruments_info(category="linear", symbol=par)
+        filtro = info["result"]["list"][0]["lotSizeFilter"]
+        step = float(filtro["qtyStep"])
+        min_qty = float(filtro["minOrderQty"])
+        qty_bruta = (usdt_alvo * alavancagem) / preco_atual
+        precisao = abs(int(round(-np.log10(step), 0)))
+        qty_final = round(qty_bruta, precisao)
+        if qty_final < min_qty:
+            print(f"❌ Quantidade {qty_final} abaixo do mínimo permitido {min_qty} para {par}")
+            return None
+        return qty_final
+    except Exception as e:
+        print(f"Erro ao ajustar quantidade: {e}")
+        return None
+
 # === monitorar_mercado ===
 def monitorar_mercado():
     while True:
@@ -136,7 +154,9 @@ def monitorar_mercado():
             if saldo_total < 3:
                 print("❌ Saldo insuficiente — não vai entrar.")
                 continue
-            qty = round((3 * 2) / preco_atual, 3)
+            qty = ajustar_quantidade(par, 3, 2, preco_atual)
+            if qty is None:
+                continue
             session.place_order(
                 category="linear",
                 symbol=par,
