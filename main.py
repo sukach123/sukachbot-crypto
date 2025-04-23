@@ -1,4 +1,4 @@
-# main.py atualizado com módulo de indicadores e detecção de candle
+# main.py completo com lógica PRO, estrutura de candle, indicadores e controle de risco
 from flask import Flask
 import os
 import time
@@ -59,8 +59,7 @@ def detectar_direcao_candle(candle_anterior, candle_atual):
     else:
         return "Baixa"
 
-# função corrigida para SL
-
+# === função corrigida para SL ===
 def aplicar_tp_sl(par, preco_entrada):
     take_profit = round(preco_entrada * 1.01, 4)
     stop_loss = round(preco_entrada * 0.997, 4)
@@ -103,4 +102,87 @@ def aplicar_tp_sl(par, preco_entrada):
         print("⚠️ Não foi possível aplicar TP/SL após 3 tentativas. Nova tentativa em 15 segundos...")
         threading.Timer(15, aplicar_tp_sl, args=(par, preco_entrada)).start()
 
-# ⚙️ Commit: Correção final aplicada. Indicadores e vela integrados, SL garantido abaixo do preço base
+# === monitorar_mercado ===
+def monitorar_mercado():
+    while True:
+        try:
+            pares = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "MATICUSDT", "AVAXUSDT", "LINKUSDT", "TONUSDT"]
+            par = random.choice(pares)
+            candles = session.get_kline(category="linear", symbol=par, interval="1", limit=50)["result"]["list"]
+            if len(candles) < 30:
+                print(f"⚠️ Poucos candles para {par}, a saltar...")
+                time.sleep(2)
+                continue
+
+            preco_atual = float(candles[-1][4])
+            df = pd.DataFrame(candles, columns=["timestamp", "open", "high", "low", "close", "volume", "turnover"])
+            df[["open", "high", "low", "close"]] = df[["open", "high", "low", "close"]].astype(float)
+
+            sinais = analisar_indicadores(df)
+            print(f"📊 Indicadores detectados para {par}: {sinais}")
+
+            if len(sinais) < 4 or len(sinais) > 12:
+                print("⛔ Número de sinais fora do intervalo 4-12. Ignorado.")
+                continue
+
+            essenciais = ["RSI", "EMA", "MACD", "CCI", "ADX"]
+            if not any(s in sinais for s in essenciais):
+                print("⛔ Nenhum indicador essencial presente. Ignorado.")
+                continue
+
+            direcao = detectar_direcao_candle(candles[-2], candles[-1])
+            print(f"🕯️ Direção do candle atual: {direcao}")
+
+            if direcao == "Neutro":
+                print("⚠️ Vela neutra detectada. Ignorado.")
+                continue
+
+            wallet = session.get_wallet_balance(accountType="UNIFIED")
+            coins = wallet.get("result", {}).get("list", [])[0].get("coin", [])
+            saldo_total = 0
+            for c in coins:
+                if c.get("coin") == "USDT":
+                    saldo_total = float(c.get("equity", "0"))
+                    break
+            print(f"💰 Saldo USDT aprovado: {saldo_total}")
+
+            if saldo_total < 3:
+                print("❌ Saldo insuficiente — não vai entrar.")
+                continue
+
+            qty = round((3 * 2) / preco_atual, 3)
+
+            session.place_order(
+                category="linear",
+                symbol=par,
+                side="Buy" if direcao == "Alta" else "Sell",
+                orderType="Market",
+                qty=qty,
+                leverage=2
+            )
+
+            historico_resultados.append(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | {par} | Entrada {direcao} | Qty={qty}")
+            print(f"🚀 ENTRADA REAL: {par} | Qty: {qty} | Preço: {preco_atual} | Direção: {direcao}")
+            aplicar_tp_sl(par, preco_atual)
+
+        except Exception as e:
+            print(f"Erro no monitoramento: {e}")
+        time.sleep(2)
+
+# === manter ativo ===
+def manter_ativo():
+    def pingar():
+        while True:
+            try:
+                requests.get("https://sukachbot-crypto-production.up.railway.app/")
+                print("🔄 Ping enviado para manter online")
+            except:
+                pass
+            time.sleep(300)
+    threading.Thread(target=pingar, daemon=True).start()
+
+if __name__ == "__main__":
+    manter_ativo()
+    threading.Thread(target=monitorar_mercado, daemon=True).start()
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
