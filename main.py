@@ -34,11 +34,12 @@ def saldo():
         coins = response["result"]["list"][0]["coin"]
         output = "<h2>Saldo Atual:</h2><ul>"
         for coin in coins:
-            value = coin.get("availableToWithdraw", "0")
+            value = coin.get("equity", "0")  # usamos equity porque availableToWithdraw está vazio
             try:
                 balance = float(value)
                 if balance > 0:
-                    output += f"<li>{coin['coin']}: {balance}</li>"
+                    nome_moeda = coin.get("moeda", coin.get("coin", "???"))
+                    output += f"<li>{nome_moeda}: {balance}</li>"
             except ValueError:
                 continue
         output += "</ul>"
@@ -164,9 +165,9 @@ def monitorar_mercado():
 
                 saldo_total = 0
                 for c in coins:
-                    if c.get("coin") == "USDT":
+                    if c.get("moeda") == "USDT":
                         try:
-                            saldo_total = float(c.get("availableToWithdraw", "0") or 0)
+                            saldo_total = float(c.get("equity", "0") or 0)
                         except Exception as e:
                             print(f"Erro ao converter saldo: {e}")
                         break
@@ -210,4 +211,3 @@ if __name__ == "__main__":
     threading.Thread(target=monitorar_mercado, daemon=True).start()
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
-
