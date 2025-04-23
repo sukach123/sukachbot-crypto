@@ -59,7 +59,7 @@ def detectar_direcao_candle(candle_anterior, candle_atual):
     else:
         return "Baixa"
 
-# === função corrigida para SL ===
+# === função corrigida e reforçada para SL ===
 def aplicar_tp_sl(par, preco_entrada):
     take_profit = round(preco_entrada * 1.01, 4)
     stop_loss = round(preco_entrada * 0.997, 4)
@@ -68,33 +68,28 @@ def aplicar_tp_sl(par, preco_entrada):
     for tentativa in range(3):
         try:
             posicoes = session.get_positions(category="linear", symbol=par)["result"]["list"]
-            if posicoes and (
-                posicoes[0].get("takeProfit") == str(take_profit) and
-                posicoes[0].get("stopLoss") == str(stop_loss)
-            ):
-                print("TP/SL já definidos corretamente, sem alterações.")
-                sucesso = True
-                break
-            atual = float(posicoes[0].get("markPrice", preco_entrada))
-            lucro_atual = (atual - preco_entrada) / preco_entrada
-            if lucro_atual > 0.006:
-                novo_sl = round(atual * 0.997, 4)
-                stop_loss = max(stop_loss, novo_sl)
-                trailing_ativado = True
-            if stop_loss >= preco_entrada:
-                stop_loss = preco_entrada - 0.0001
-            response = session.set_trading_stop(
-                category="linear",
-                symbol=par,
-                takeProfit=take_profit,
-                stopLoss=stop_loss
-            )
-            if response.get("retCode") == 0:
-                print(f"✅ TP/SL definidos: TP={take_profit} | SL={stop_loss} {'(Trailing SL ativo)' if trailing_ativado else ''}")
-                sucesso = True
-                break
-            else:
-                print(f"Erro ao aplicar TP/SL: {response}")
+            if posicoes:
+                preco_posicao = float(posicoes[0].get("entryPrice", preco_entrada))
+                atual = float(posicoes[0].get("markPrice", preco_entrada))
+                lucro_atual = (atual - preco_posicao) / preco_posicao
+                if lucro_atual > 0.006:
+                    novo_sl = round(atual * 0.997, 4)
+                    stop_loss = max(stop_loss, novo_sl)
+                    trailing_ativado = True
+                if stop_loss >= preco_posicao:
+                    stop_loss = round(preco_posicao - 0.0001, 4)
+                response = session.set_trading_stop(
+                    category="linear",
+                    symbol=par,
+                    takeProfit=take_profit,
+                    stopLoss=stop_loss
+                )
+                if response.get("retCode") == 0:
+                    print(f"✅ TP/SL definidos: TP={take_profit} | SL={stop_loss} {'(Trailing SL ativo)' if trailing_ativado else ''}")
+                    sucesso = True
+                    break
+                else:
+                    print(f"Erro ao aplicar TP/SL: {response}")
         except Exception as e:
             print(f"Falha ao aplicar TP/SL (tentativa {tentativa+1}): {e}")
             time.sleep(1)
@@ -113,30 +108,23 @@ def monitorar_mercado():
                 print(f"⚠️ Poucos candles para {par}, a saltar...")
                 time.sleep(2)
                 continue
-
             preco_atual = float(candles[-1][4])
             df = pd.DataFrame(candles, columns=["timestamp", "open", "high", "low", "close", "volume", "turnover"])
             df[["open", "high", "low", "close"]] = df[["open", "high", "low", "close"]].astype(float)
-
             sinais = analisar_indicadores(df)
             print(f"📊 Indicadores detectados para {par}: {sinais}")
-
             if len(sinais) < 4 or len(sinais) > 12:
                 print("⛔ Número de sinais fora do intervalo 4-12. Ignorado.")
                 continue
-
             essenciais = ["RSI", "EMA", "MACD", "CCI", "ADX"]
             if not any(s in sinais for s in essenciais):
                 print("⛔ Nenhum indicador essencial presente. Ignorado.")
                 continue
-
             direcao = detectar_direcao_candle(candles[-2], candles[-1])
             print(f"🕯️ Direção do candle atual: {direcao}")
-
             if direcao == "Neutro":
                 print("⚠️ Vela neutra detectada. Ignorado.")
                 continue
-
             wallet = session.get_wallet_balance(accountType="UNIFIED")
             coins = wallet.get("result", {}).get("list", [])[0].get("coin", [])
             saldo_total = 0
@@ -145,13 +133,10 @@ def monitorar_mercado():
                     saldo_total = float(c.get("equity", "0"))
                     break
             print(f"💰 Saldo USDT aprovado: {saldo_total}")
-
             if saldo_total < 3:
                 print("❌ Saldo insuficiente — não vai entrar.")
                 continue
-
             qty = round((3 * 2) / preco_atual, 3)
-
             session.place_order(
                 category="linear",
                 symbol=par,
@@ -160,11 +145,9 @@ def monitorar_mercado():
                 qty=qty,
                 leverage=2
             )
-
             historico_resultados.append(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | {par} | Entrada {direcao} | Qty={qty}")
             print(f"🚀 ENTRADA REAL: {par} | Qty: {qty} | Preço: {preco_atual} | Direção: {direcao}")
             aplicar_tp_sl(par, preco_atual)
-
         except Exception as e:
             print(f"Erro no monitoramento: {e}")
         time.sleep(2)
@@ -186,3 +169,4 @@ if __name__ == "__main__":
     threading.Thread(target=monitorar_mercado, daemon=True).start()
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
+
