@@ -1,4 +1,5 @@
-# main.py completo com lógica PRO, estrutura de candle, indicadores e controle de risco
+# main.py - SukachBot CRYPTO PRO atualizado
+
 from flask import Flask
 import os
 import time
@@ -147,7 +148,7 @@ def monitorar_mercado():
             df[["open", "high", "low", "close"]] = df[["open", "high", "low", "close"]].astype(float)
             sinais = analisar_indicadores(df)
             print(f"📊 Indicadores detectados para {par}: {sinais}")
-            if len(sinais) < 4 or len(sinais) > 12:
+            if len(sinais) < 11 or len(sinais) > 12:
                 print("⛔ Número de sinais fora do intervalo 4-12. Ignorado.")
                 continue
             essenciais = ["RSI", "EMA", "MACD", "CCI", "ADX"]
@@ -205,4 +206,6 @@ if __name__ == "__main__":
     threading.Thread(target=monitorar_mercado, daemon=True).start()
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
+
+
 
