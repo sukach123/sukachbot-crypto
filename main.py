@@ -35,8 +35,8 @@ def analisar_indicadores(df):
     rsi = 100 - (100 / (1 + rs))
     if rsi.iloc[-1] < 30:
         sinais.append("RSI")
-    if rsi.iloc[-1] > 70:
-        sinais.append("RSI_Sobrecomprado")
+    # RSI acima de 70 será tratado como possível reversão — não adiciona sinal positivo
+    pass
     df["RSI"] = rsi
     exp1 = df["close"].ewm(span=12).mean()
     exp2 = df["close"].ewm(span=26).mean()
