@@ -191,7 +191,7 @@ def monitorar_mercado():
             aplicar_tp_sl(par, preco_atual, direcao)
         except Exception as e:
             print(f"Erro no monitoramento: {e}")
-        time.sleep(2)
+            time.sleep(2)
 
 # === manter ativo ===
 def manter_ativo():
@@ -210,5 +210,6 @@ if __name__ == "__main__":
     threading.Thread(target=monitorar_mercado, daemon=True).start()
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
+
 
 
