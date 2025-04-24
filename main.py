@@ -153,7 +153,7 @@ def monitorar_mercado():
             sinais = analisar_indicadores(df)
             print(f"📊 Indicadores detectados para {par}: {sinais}")
             if len(sinais) < 11 or len(sinais) > 12:
-                print("⛔ Número de sinais fora do intervalo 4-12. Ignorado.")
+                print("⛔ Número de sinais fora do intervalo 11-12. Ignorado.")
                 continue
             essenciais = ["RSI", "EMA", "MACD", "CCI", "ADX"]
             if not any(s in sinais for s in essenciais):
