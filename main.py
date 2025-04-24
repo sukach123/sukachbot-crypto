@@ -72,9 +72,13 @@ def detectar_direcao_candle(candle_anterior, candle_atual):
         return "Baixa"
 
 # === função corrigida para TP/SL ===
-def aplicar_tp_sl(par, preco_entrada):
-    take_profit = round(preco_entrada * 1.015, 4)
-    stop_loss = round(preco_entrada * 0.997, 4)
+def aplicar_tp_sl(par, preco_entrada, direcao):
+    if direcao == "Alta":
+        take_profit = round(preco_entrada * 1.015, 4)
+        stop_loss = round(preco_entrada * 0.997, 4)
+    else:
+        take_profit = round(preco_entrada * 0.985, 4)
+        stop_loss = round(preco_entrada * 1.003, 4)
     trailing_ativado = False
     sucesso = False
     for tentativa in range(3):
@@ -184,7 +188,7 @@ def monitorar_mercado():
             )
             historico_resultados.append(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | {par} | Entrada {direcao} | Qty={qty}")
             print(f"🚀 ENTRADA REAL: {par} | Qty: {qty} | Preço: {preco_atual} | Direção: {direcao}")
-            aplicar_tp_sl(par, preco_atual)
+            aplicar_tp_sl(par, preco_atual, direcao)
         except Exception as e:
             print(f"Erro no monitoramento: {e}")
         time.sleep(2)
@@ -206,6 +210,5 @@ if __name__ == "__main__":
     threading.Thread(target=monitorar_mercado, daemon=True).start()
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
-
 
 
