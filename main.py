@@ -61,7 +61,7 @@ def detectar_direcao_candle(candle_anterior, candle_atual):
 
 # === função corrigida e reforçada para SL ===
 def aplicar_tp_sl(par, preco_entrada):
-    take_profit = round(preco_entrada * 1.01, 4)
+    take_profit = round(preco_entrada * 1.02, 4)
     stop_loss = round(preco_entrada * 0.997, 4)
     trailing_ativado = False
     sucesso = False
@@ -189,4 +189,3 @@ if __name__ == "__main__":
     threading.Thread(target=monitorar_mercado, daemon=True).start()
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
-
