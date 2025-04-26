@@ -22,7 +22,8 @@ end_timestamp = int(pd.Timestamp(end_date).timestamp() * 1000)
 
 session = HTTP(api_key=api_key, api_secret=api_secret, testnet=False)
 
-# === Função para buscar candles ===
+# === Funções auxiliares ===
+
 def fetch_historico(symbol):
     candles = []
     start = start_timestamp
@@ -41,7 +42,6 @@ def fetch_historico(symbol):
     df["timestamp"] = pd.to_datetime(pd.to_numeric(df["timestamp"]), unit="ms")
     return df
 
-# === Indicadores ===
 def calcular_indicadores(df):
     df["EMA10"] = df["close"].ewm(span=10).mean()
     df["EMA20"] = df["close"].ewm(span=20).mean()
@@ -54,13 +54,11 @@ def calcular_indicadores(df):
     df["volume_explosivo"] = df["volume"] > 1.3 * df["volume_medio"]
     return df
 
-# === Verificar Entrada ===
 def verificar_entrada(df, i):
     row = df.iloc[i]
     prev = df.iloc[i-1]
     ultimos5 = df.iloc[i-5:i]
     ultimos20 = df.iloc[i-20:i]
-
     corpo = abs(row["close"] - row["open"])
     volatilidade = ultimos20["high"].max() - ultimos20["low"].min()
     media_atr = ultimos20["ATR"].mean()
@@ -79,7 +77,6 @@ def verificar_entrada(df, i):
     ]
     return all(condicoes)
 
-# === Função para repetir SL ===
 def tentar_colocar_sl(symbol, preco_sl, quantidade, tentativas=3):
     sl_colocado = False
     while not sl_colocado:
@@ -106,8 +103,7 @@ def tentar_colocar_sl(symbol, preco_sl, quantidade, tentativas=3):
             print("⏳ Esperando 15 segundos para tentar novamente colocar SL...")
             time.sleep(15)
 
-# === Simular entradas ===
-def simular(df):
+def simular(df, symbol):
     saldo = saldo_inicial
     historico = []
     win = 0
@@ -121,7 +117,6 @@ def simular(df):
             trailing = preco_entrada * 1.01
             quantidade = (quantidade_usdt * 2) / preco_entrada
 
-            # Simular tentativa de colocar SL
             tentar_colocar_sl(symbol, sl, quantidade)
 
             for j in range(i+1, min(i+20, len(df))):
@@ -146,23 +141,21 @@ def simular(df):
 # === Execução ===
 
 print("📥 Buscando histórico específico...")
+
 for symbol in symbols:
-    print(f"
-=== Testando par: {symbol} ===")
+    print(f"\n=== Testando par: {symbol} ===")
     df = fetch_historico(symbol)
-print("📊 Calculando indicadores...")
+    print("📊 Calculando indicadores...")
     df = calcular_indicadores(df)
+    print("🚀 Iniciando simulação...")
+    win, loss, saldo_final, historico = simular(df, symbol)
 
-print("🚀 Iniciando simulação...")
-    win, loss, saldo_final, historico = simular(df)
-
-    print("
-=== RESULTADO DO BACKTEST ===")
+    print("\n=== RESULTADO DO BACKTEST ===")
     print(f"Entradas simuladas: {win + loss}")
-print(f"✅ WIN: {win}")
-print(f"❌ LOSS: {loss}")
-print(f"🎯 Taxa de acerto: {round(100 * win / (win + loss), 2)}%")
-print(f"💰 Saldo final: {round(saldo_final, 2)} USDT")
+    print(f"✅ WIN: {win}")
+    print(f"❌ LOSS: {loss}")
+    print(f"🎯 Taxa de acerto: {round(100 * win / (win + loss), 2)}%")
+    print(f"💰 Saldo final: {round(saldo_final, 2)} USDT")
 
     plt.figure(figsize=(12,6))
     plt.plot(historico)
@@ -171,5 +164,3 @@ print(f"💰 Saldo final: {round(saldo_final, 2)} USDT")
     plt.ylabel("Saldo (USDT)")
     plt.grid()
     plt.show()
-
-
