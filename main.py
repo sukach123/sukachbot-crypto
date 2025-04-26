@@ -1,4 +1,4 @@
-# === SukachBot PRO75 - OPERAÇÃO AO VIVO COM 6 PARES ===
+# === SukachBot PRO75 - OPERAÇÃO AO VIVO - LONG e SHORT - 7/9 SINAIS - SEGURANÇA AUTOMÁTICA ===
 
 import pandas as pd
 import numpy as np
@@ -17,12 +17,17 @@ session = HTTP(api_key=api_key, api_secret=api_secret, testnet=False)
 # === Funções auxiliares ===
 
 def fetch_candles(symbol, interval="1"):
-    data = session.get_kline(category="linear", symbol=symbol, interval=interval, limit=200)
-    candles = data['result']['list']
-    df = pd.DataFrame(candles, columns=["timestamp", "open", "high", "low", "close", "volume", "turnover"])
-    df = df.astype({"open": float, "high": float, "low": float, "close": float, "volume": float})
-    df["timestamp"] = pd.to_datetime(pd.to_numeric(df["timestamp"]), unit="ms")
-    return df
+    try:
+        data = session.get_kline(category="linear", symbol=symbol, interval=interval, limit=200)
+        candles = data['result']['list']
+        df = pd.DataFrame(candles, columns=["timestamp", "open", "high", "low", "close", "volume", "turnover"])
+        df = df.astype({"open": float, "high": float, "low": float, "close": float, "volume": float})
+        df["timestamp"] = pd.to_datetime(pd.to_numeric(df["timestamp"]), unit="ms")
+        return df
+    except Exception as e:
+        print(f"🚨 Erro a buscar candles de {symbol}: {e}")
+        time.sleep(5)
+        return fetch_candles(symbol)
 
 def calcular_indicadores(df):
     df["EMA10"] = df["close"].ewm(span=10).mean()
@@ -46,32 +51,42 @@ def verificar_entrada(df):
     media_atr = ultimos20["ATR"].mean()
     nao_lateral = volatilidade > (2 * media_atr)
 
-    condicoes = [
-        row["EMA10"] > row["EMA20"],
+    sinais_fortes = [
+        row["EMA10"] > row["EMA20"] or row["EMA10"] < row["EMA20"],
         row["MACD"] > row["SINAL"],
         row["CCI"] > 0,
         row["ADX"] > 20,
         row["volume_explosivo"],
         corpo > ultimos5["close"].max() - ultimos5["low"].min(),
-        prev["close"] > prev["open"],
-        (row["high"] - row["close"]) < corpo,
         nao_lateral
     ]
 
-    confirmados = sum(condicoes)
-    print(f"🔎 {df['timestamp'].iloc[-1]} | {confirmados}/9 sinais confirmados")
+    sinais_extras = [
+        prev["close"] > prev["open"],
+        (row["high"] - row["close"]) < corpo
+    ]
 
-    return confirmados == 9
+    total_confirmados = sum(sinais_fortes) + sum(sinais_extras)
+
+    if sum(sinais_fortes) >= 7:
+        tendencia = "Buy" if row["EMA10"] > row["EMA20"] else "Sell"
+        direcao_txt = "📈 EMA10>EMA20 ➔ BUY (LONG)" if tendencia == "Buy" else "📉 EMA10<EMA20 ➔ SELL (SHORT)"
+        print(f"🔎 {df['timestamp'].iloc[-1]} | {total_confirmados}/9 sinais confirmados | {direcao_txt}")
+        return tendencia
+    else:
+        print(f"🔎 {df['timestamp'].iloc[-1]} | {total_confirmados}/9 sinais confirmados | Entrada bloqueada ❌")
+        return None
 
 def tentar_colocar_sl(symbol, preco_sl, quantidade, tentativas=3):
     sl_colocado = False
+    tentativas_feitas = 0
     while not sl_colocado:
         for tentativa in range(tentativas):
             try:
                 session.place_order(
                     category="linear",
                     symbol=symbol,
-                    side="Sell",
+                    side="Sell" if preco_sl < 1 else "Buy",
                     orderType="Stop",
                     qty=quantidade,
                     price=round(preco_sl, 3),
@@ -83,32 +98,40 @@ def tentar_colocar_sl(symbol, preco_sl, quantidade, tentativas=3):
                 sl_colocado = True
                 break
             except Exception as e:
-                print(f"Erro ao colocar SL (tentativa {tentativa+1}): {e}")
+                print(f"🚨 Erro ao colocar SL (tentativa {tentativa+1}): {e}")
                 time.sleep(1)
         if not sl_colocado:
-            print("⏳ Esperando 15 segundos para tentar novamente colocar SL...")
+            tentativas_feitas += 1
+            print(f"⏳ Esperando 15 segundos para tentar novamente colocar SL... (Tentativas falhadas: {tentativas_feitas})")
             time.sleep(15)
 
-def enviar_ordem(symbol):
-    preco_atual = float(session.get_ticker(category="linear", symbol=symbol)["result"]["lastPrice"])
-    quantidade = round(quantidade_usdt / preco_atual, 3)
-    session.set_leverage(category="linear", symbol=symbol, buyLeverage=2, sellLeverage=2)
-
+def enviar_ordem(symbol, lado):
     try:
+        preco_atual = float(session.get_ticker(category="linear", symbol=symbol)["result"]["lastPrice"])
+        quantidade = round(quantidade_usdt / preco_atual, 3)
+        session.set_leverage(category="linear", symbol=symbol, buyLeverage=2, sellLeverage=2)
+
         session.place_order(
             category="linear",
             symbol=symbol,
-            side="Buy",
+            side=lado,
             orderType="Market",
             qty=quantidade,
             reduceOnly=False
         )
-        print(f"🚀 Compra executada em {symbol} ao preço de {preco_atual}")
+        print(f"🚀 Ordem {lado} executada em {symbol} ao preço de {preco_atual}")
+
         preco_entrada = preco_atual
-        sl = preco_entrada * 0.985
+        if lado == "Buy":
+            sl = preco_entrada * 0.994
+        else:
+            sl = preco_entrada * 1.006
         tentar_colocar_sl(symbol, sl, quantidade)
+
     except Exception as e:
-        print(f"Erro ao enviar ordem de compra: {e}")
+        print(f"🚨 Erro ao enviar ordem: {e}")
+        time.sleep(5)
+        enviar_ordem(symbol, lado)  # Tenta novamente
 
 # === Loop Principal ===
 
@@ -117,12 +140,12 @@ while True:
         try:
             df = fetch_candles(symbol)
             df = calcular_indicadores(df)
-            if verificar_entrada(df):
-                enviar_ordem(symbol)
+            direcao = verificar_entrada(df)
+            if direcao:
+                enviar_ordem(symbol, direcao)
             else:
                 print(f"🔹 {symbol} sem entrada confirmada...")
         except Exception as e:
-            print(f"Erro no processamento de {symbol}: {e}")
+            print(f"🚨 Erro geral no processamento de {symbol}: {e}")
+            time.sleep(5)
     time.sleep(1)
-
-
