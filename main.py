@@ -1,27 +1,41 @@
-# === SukachBot PRO LIGHT - ENTRADA REAL BNB COM TP/SL AUTOMÁTICO + TRAILING STOP ===
+# === SukachBot PRO75 - BACKTEST BNBUSDT - PERÍODO ESPECÍFICO COM SL REPEAT ===
 
-from pybit.unified_trading import HTTP
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
+from pybit.unified_trading import HTTP
 import time
-import os
 
 # === Configurações ===
-symbol = "BNBUSDT"
+symbols = ["BNBUSDT", "BTCUSDT", "DOGEUSDT", "SOLUSDT", "ADAUSDT", "ETHUSDT"]
 interval = "1"
 api_key = "TUA_API_KEY"
 api_secret = "TEU_API_SECRET"
 quantidade_usdt = 2
-trailing_ativo = False
-preco_entrada = 0
-novo_trailing = 0
+saldo_inicial = 500
+
+start_date = "2025-04-01 00:00:00"
+end_date = "2025-04-25 00:00:00"
+
+start_timestamp = int(pd.Timestamp(start_date).timestamp() * 1000)
+end_timestamp = int(pd.Timestamp(end_date).timestamp() * 1000)
 
 session = HTTP(api_key=api_key, api_secret=api_secret, testnet=False)
 
-# === Função para buscar últimos candles ===
-def fetch_candles(symbol, interval="1"):
-    data = session.get_kline(category="linear", symbol=symbol, interval=interval, limit=200)
-    candles = data['result']['list']
+# === Função para buscar candles ===
+def fetch_historico(symbol):
+    candles = []
+    start = start_timestamp
+    while True:
+        data = session.get_kline(category="linear", symbol=symbol, interval=interval, limit=1000, start=start)
+        batch = data['result']['list']
+        if not batch:
+            break
+        candles.extend(batch)
+        start = int(batch[-1][0]) + 60_000
+        if start > end_timestamp:
+            break
+        time.sleep(0.2)
     df = pd.DataFrame(candles, columns=["timestamp", "open", "high", "low", "close", "volume", "turnover"])
     df = df.astype({"open": float, "high": float, "low": float, "close": float, "volume": float})
     df["timestamp"] = pd.to_datetime(pd.to_numeric(df["timestamp"]), unit="ms")
@@ -40,12 +54,12 @@ def calcular_indicadores(df):
     df["volume_explosivo"] = df["volume"] > 1.3 * df["volume_medio"]
     return df
 
-# === Verificar entrada ===
-def verificar_entrada(df):
-    row = df.iloc[-1]
-    prev = df.iloc[-2]
-    ultimos5 = df.iloc[-5:]
-    ultimos20 = df.iloc[-20:]
+# === Verificar Entrada ===
+def verificar_entrada(df, i):
+    row = df.iloc[i]
+    prev = df.iloc[i-1]
+    ultimos5 = df.iloc[i-5:i]
+    ultimos20 = df.iloc[i-20:i]
 
     corpo = abs(row["close"] - row["open"])
     volatilidade = ultimos20["high"].max() - ultimos20["low"].min()
@@ -63,72 +77,99 @@ def verificar_entrada(df):
         (row["high"] - row["close"]) < corpo,
         nao_lateral
     ]
-
-    sinais_confirmados = sum(condicoes)
-    print(f"🔎 Sinais confirmados: {sinais_confirmados}/9")
-
     return all(condicoes)
 
-# === Função para enviar ordem real com TP/SL e ativar trailing ===
-def enviar_ordem(symbol, quantidade_usdt):
-    global preco_entrada, trailing_ativo
-    session.set_leverage(category="linear", symbol=symbol, buyLeverage=2, sellLeverage=2)
-    global preco_entrada, trailing_ativo
-    preco_atual = session.get_ticker(category="linear", symbol=symbol)["result"]["lastPrice"]
-    preco_atual = float(preco_atual)
-    quantidade = round(quantidade_usdt / preco_atual, 3)
+# === Função para repetir SL ===
+def tentar_colocar_sl(symbol, preco_sl, quantidade, tentativas=3):
+    sl_colocado = False
+    while not sl_colocado:
+        for tentativa in range(tentativas):
+            try:
+                session.place_order(
+                    category="linear",
+                    symbol=symbol,
+                    side="Sell",
+                    orderType="Stop",
+                    qty=quantidade,
+                    price=round(preco_sl, 3),
+                    triggerPrice=round(preco_sl, 3),
+                    triggerBy="LastPrice",
+                    reduceOnly=True
+                )
+                print(f"🎯 SL colocado na tentativa {tentativa+1} com sucesso!")
+                sl_colocado = True
+                break
+            except Exception as e:
+                print(f"Erro ao colocar SL (tentativa {tentativa+1}): {e}")
+                time.sleep(1)
+        if not sl_colocado:
+            print("⏳ Esperando 15 segundos para tentar novamente colocar SL...")
+            time.sleep(15)
 
-    try:
-        session.place_order(
-            category="linear",
-            symbol=symbol,
-            side="Buy",
-            orderType="Market",
-            qty=quantidade,
-            reduceOnly=False
-        )
-        preco_entrada = preco_atual
-        trailing_ativo = True
-        print(f"🚀 ORDEM DE COMPRA ENVIADA! Preço de entrada: {preco_entrada}")
-    except Exception as e:
-        print(f"Erro ao enviar ordem: {e}")
+# === Simular entradas ===
+def simular(df):
+    saldo = saldo_inicial
+    historico = []
+    win = 0
+    loss = 0
 
-# === Função para monitorar trailing stop ===
-def monitorar_trailing(symbol):
-    global preco_entrada, trailing_ativo, novo_trailing
-    if not trailing_ativo:
-        return
+    for i in range(30, len(df)-20):
+        if verificar_entrada(df, i):
+            preco_entrada = df.iloc[i]["close"]
+            tp = preco_entrada * 1.025
+            sl = preco_entrada * 0.985
+            trailing = preco_entrada * 1.01
+            quantidade = (quantidade_usdt * 2) / preco_entrada
 
-    preco_atual = session.get_ticker(category="linear", symbol=symbol)["result"]["lastPrice"]
-    preco_atual = float(preco_atual)
+            # Simular tentativa de colocar SL
+            tentar_colocar_sl(symbol, sl, quantidade)
 
-    if preco_atual >= preco_entrada * 1.01:
-        novo_trailing = preco_atual * 0.995
-        try:
-            session.place_order(
-                category="linear",
-                symbol=symbol,
-                side="Sell",
-                orderType="Stop",
-                qty=round(quantidade_usdt / preco_atual, 3),
-                price=round(novo_trailing, 3),
-                triggerPrice=round(novo_trailing, 3),
-                triggerBy="LastPrice",
-                reduceOnly=True
-            )
-            print(f"🎯 Trailing Stop atualizado para {round(novo_trailing, 3)}")
-            preco_entrada = preco_atual
-        except Exception as e:
-            print(f"Erro ao atualizar trailing stop: {e}")
+            for j in range(i+1, min(i+20, len(df))):
+                high = df.iloc[j]["high"]
+                low = df.iloc[j]["low"]
 
-# === Loop Principal ===
-while True:
-    df = fetch_candles(symbol)
+                if high >= tp:
+                    saldo += quantidade_usdt * 2 * 0.025
+                    win += 1
+                    break
+                elif low <= sl:
+                    saldo -= quantidade_usdt * 2 * 0.015
+                    loss += 1
+                    break
+                elif high >= trailing:
+                    trailing = high * 0.995
+
+            historico.append(saldo)
+
+    return win, loss, saldo, historico
+
+# === Execução ===
+
+print("📥 Buscando histórico específico...")
+for symbol in symbols:
+    print(f"
+=== Testando par: {symbol} ===")
+    df = fetch_historico(symbol)
+print("📊 Calculando indicadores...")
     df = calcular_indicadores(df)
-    if verificar_entrada(df) and not trailing_ativo:
-        enviar_ordem(symbol, quantidade_usdt)
-    else:
-        monitorar_trailing(symbol)
-        print("🔹 Sem sinal de entrada novo. A monitorar trailing...")
-    time.sleep(1)
+
+print("🚀 Iniciando simulação...")
+    win, loss, saldo_final, historico = simular(df)
+
+    print("
+=== RESULTADO DO BACKTEST ===")
+    print(f"Entradas simuladas: {win + loss}")
+print(f"✅ WIN: {win}")
+print(f"❌ LOSS: {loss}")
+print(f"🎯 Taxa de acerto: {round(100 * win / (win + loss), 2)}%")
+print(f"💰 Saldo final: {round(saldo_final, 2)} USDT")
+
+    plt.figure(figsize=(12,6))
+    plt.plot(historico)
+    plt.title(f"Evolução de saldo - {symbol}")
+    plt.xlabel("Operações")
+    plt.ylabel("Saldo (USDT)")
+    plt.grid()
+    plt.show()
+
 
