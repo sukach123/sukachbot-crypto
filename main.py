@@ -24,7 +24,7 @@ def fetch_candles(symbol, interval="1"):
     candles = data['result']['list']
     df = pd.DataFrame(candles, columns=["timestamp", "open", "high", "low", "close", "volume", "turnover"])
     df = df.astype({"open": float, "high": float, "low": float, "close": float, "volume": float})
-    df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms")
+    df["timestamp"] = pd.to_datetime(pd.to_numeric(df["timestamp"]), unit="ms")
     return df
 
 # === Indicadores ===
@@ -128,7 +128,4 @@ while True:
         monitorar_trailing(symbol)
         print("🔹 Sem sinal de entrada novo. A monitorar trailing...")
     time.sleep(1)
-
-
-
 
