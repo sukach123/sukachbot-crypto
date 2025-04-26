@@ -74,7 +74,11 @@ def verificar_entrada(df, i):
         (row["high"] - row["close"]) < corpo,
         nao_lateral
     ]
-    return all(condicoes)
+
+    confirmados = sum(condicoes)
+    print(f"🔎 Sinais confirmados: {confirmados}/9")
+
+    return confirmados == 9
 
 def tentar_colocar_sl(symbol, preco_sl, quantidade, tentativas=3):
     sl_colocado = False
@@ -157,3 +161,4 @@ for symbol in symbols:
     print(f"💰 Saldo final: {round(saldo_final, 2)} USDT")
 
     # Removido gráfico para ambientes sem matplotlib
+
