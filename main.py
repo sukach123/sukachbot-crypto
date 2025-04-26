@@ -64,6 +64,9 @@ def verificar_entrada(df):
         nao_lateral
     ]
 
+    sinais_confirmados = sum(condicoes)
+    print(f"🔎 Sinais confirmados: {sinais_confirmados}/9")
+
     return all(condicoes)
 
 # === Função para enviar ordem real com TP/SL e ativar trailing ===
