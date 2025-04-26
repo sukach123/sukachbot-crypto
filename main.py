@@ -2,7 +2,6 @@
 
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 from pybit.unified_trading import HTTP
 import time
 
@@ -157,10 +156,4 @@ for symbol in symbols:
     print(f"🎯 Taxa de acerto: {round(100 * win / (win + loss), 2)}%")
     print(f"💰 Saldo final: {round(saldo_final, 2)} USDT")
 
-    plt.figure(figsize=(12,6))
-    plt.plot(historico)
-    plt.title(f"Evolução de saldo - {symbol}")
-    plt.xlabel("Operações")
-    plt.ylabel("Saldo (USDT)")
-    plt.grid()
-    plt.show()
+    # Removido gráfico para ambientes sem matplotlib
