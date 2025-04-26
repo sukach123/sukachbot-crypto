@@ -1,4 +1,4 @@
-# === SukachBot PRO75 - BACKTEST BNBUSDT - PERÍODO ESPECÍFICO COM SL REPEAT ===
+# === SukachBot PRO75 - OPERAÇÃO AO VIVO COM 6 PARES ===
 
 import pandas as pd
 import numpy as np
@@ -11,31 +11,14 @@ interval = "1"
 api_key = "TUA_API_KEY"
 api_secret = "TEU_API_SECRET"
 quantidade_usdt = 2
-saldo_inicial = 500
-
-start_date = "2025-04-01 00:00:00"
-end_date = "2025-04-25 00:00:00"
-
-start_timestamp = int(pd.Timestamp(start_date).timestamp() * 1000)
-end_timestamp = int(pd.Timestamp(end_date).timestamp() * 1000)
 
 session = HTTP(api_key=api_key, api_secret=api_secret, testnet=False)
 
 # === Funções auxiliares ===
 
-def fetch_historico(symbol):
-    candles = []
-    start = start_timestamp
-    while True:
-        data = session.get_kline(category="linear", symbol=symbol, interval=interval, limit=1000, start=start)
-        batch = data['result']['list']
-        if not batch:
-            break
-        candles.extend(batch)
-        start = int(batch[-1][0]) + 60_000
-        if start > end_timestamp:
-            break
-        time.sleep(0.2)
+def fetch_candles(symbol, interval="1"):
+    data = session.get_kline(category="linear", symbol=symbol, interval=interval, limit=200)
+    candles = data['result']['list']
     df = pd.DataFrame(candles, columns=["timestamp", "open", "high", "low", "close", "volume", "turnover"])
     df = df.astype({"open": float, "high": float, "low": float, "close": float, "volume": float})
     df["timestamp"] = pd.to_datetime(pd.to_numeric(df["timestamp"]), unit="ms")
@@ -53,11 +36,11 @@ def calcular_indicadores(df):
     df["volume_explosivo"] = df["volume"] > 1.3 * df["volume_medio"]
     return df
 
-def verificar_entrada(df, i):
-    row = df.iloc[i]
-    prev = df.iloc[i-1]
-    ultimos5 = df.iloc[i-5:i]
-    ultimos20 = df.iloc[i-20:i]
+def verificar_entrada(df):
+    row = df.iloc[-1]
+    prev = df.iloc[-2]
+    ultimos5 = df.iloc[-5:]
+    ultimos20 = df.iloc[-20:]
     corpo = abs(row["close"] - row["open"])
     volatilidade = ultimos20["high"].max() - ultimos20["low"].min()
     media_atr = ultimos20["ATR"].mean()
@@ -76,7 +59,7 @@ def verificar_entrada(df, i):
     ]
 
     confirmados = sum(condicoes)
-    print(f"🔎 Sinais confirmados: {confirmados}/9")
+    print(f"🔎 {df['timestamp'].iloc[-1]} | {confirmados}/9 sinais confirmados")
 
     return confirmados == 9
 
@@ -106,59 +89,40 @@ def tentar_colocar_sl(symbol, preco_sl, quantidade, tentativas=3):
             print("⏳ Esperando 15 segundos para tentar novamente colocar SL...")
             time.sleep(15)
 
-def simular(df, symbol):
-    saldo = saldo_inicial
-    historico = []
-    win = 0
-    loss = 0
+def enviar_ordem(symbol):
+    preco_atual = float(session.get_ticker(category="linear", symbol=symbol)["result"]["lastPrice"])
+    quantidade = round(quantidade_usdt / preco_atual, 3)
+    session.set_leverage(category="linear", symbol=symbol, buyLeverage=2, sellLeverage=2)
 
-    for i in range(30, len(df)-20):
-        if verificar_entrada(df, i):
-            preco_entrada = df.iloc[i]["close"]
-            tp = preco_entrada * 1.025
-            sl = preco_entrada * 0.985
-            trailing = preco_entrada * 1.01
-            quantidade = (quantidade_usdt * 2) / preco_entrada
+    try:
+        session.place_order(
+            category="linear",
+            symbol=symbol,
+            side="Buy",
+            orderType="Market",
+            qty=quantidade,
+            reduceOnly=False
+        )
+        print(f"🚀 Compra executada em {symbol} ao preço de {preco_atual}")
+        preco_entrada = preco_atual
+        sl = preco_entrada * 0.985
+        tentar_colocar_sl(symbol, sl, quantidade)
+    except Exception as e:
+        print(f"Erro ao enviar ordem de compra: {e}")
 
-            tentar_colocar_sl(symbol, sl, quantidade)
+# === Loop Principal ===
 
-            for j in range(i+1, min(i+20, len(df))):
-                high = df.iloc[j]["high"]
-                low = df.iloc[j]["low"]
+while True:
+    for symbol in symbols:
+        try:
+            df = fetch_candles(symbol)
+            df = calcular_indicadores(df)
+            if verificar_entrada(df):
+                enviar_ordem(symbol)
+            else:
+                print(f"🔹 {symbol} sem entrada confirmada...")
+        except Exception as e:
+            print(f"Erro no processamento de {symbol}: {e}")
+    time.sleep(1)
 
-                if high >= tp:
-                    saldo += quantidade_usdt * 2 * 0.025
-                    win += 1
-                    break
-                elif low <= sl:
-                    saldo -= quantidade_usdt * 2 * 0.015
-                    loss += 1
-                    break
-                elif high >= trailing:
-                    trailing = high * 0.995
-
-            historico.append(saldo)
-
-    return win, loss, saldo, historico
-
-# === Execução ===
-
-print("📥 Buscando histórico específico...")
-
-for symbol in symbols:
-    print(f"\n=== Testando par: {symbol} ===")
-    df = fetch_historico(symbol)
-    print("📊 Calculando indicadores...")
-    df = calcular_indicadores(df)
-    print("🚀 Iniciando simulação...")
-    win, loss, saldo_final, historico = simular(df, symbol)
-
-    print("\n=== RESULTADO DO BACKTEST ===")
-    print(f"Entradas simuladas: {win + loss}")
-    print(f"✅ WIN: {win}")
-    print(f"❌ LOSS: {loss}")
-    print(f"🎯 Taxa de acerto: {round(100 * win / (win + loss), 2)}%")
-    print(f"💰 Saldo final: {round(saldo_final, 2)} USDT")
-
-    # Removido gráfico para ambientes sem matplotlib
 
