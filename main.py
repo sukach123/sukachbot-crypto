@@ -73,11 +73,14 @@ def verificar_entrada(df):
         preco_atual = row["close"]
         diferenca_ema = abs(row["EMA10"] - row["EMA20"])
         limite_colisao = preco_atual * 0.0005  # 0,05% do preço
+        percent_diff = (diferenca_ema / preco_atual) * 100  # diferença em %
 
         if diferenca_ema < limite_colisao:
             print(f"🚫 {row['timestamp']} | 7/9 sinais confirmados mas entrada bloqueada ❌")
-            print(f"    🔹 Motivo: EMA10 ({row['EMA10']:.2f}) e EMA20 ({row['EMA20']:.2f}) estão muito próximas (Δ {diferenca_ema:.5f}) < {limite_colisao:.5f}")
-            print(f"    🕒 Aguardar novo movimento antes de entrar...")
+            print(f"    🔹 EMA10: {row['EMA10']:.2f} | EMA20: {row['EMA20']:.2f}")
+            print(f"    🔹 Diferença EMAs: {diferenca_ema:.5f} ({percent_diff:.5f}%)")
+            print(f"    🔹 Limite aceito: {limite_colisao:.5f} (0,05% do preço)")
+            print(f"    🕒 Aguardar novo movimento para nova entrada...")
             return None
 
         tendencia = "Buy" if row["EMA10"] > row["EMA20"] else "Sell"
