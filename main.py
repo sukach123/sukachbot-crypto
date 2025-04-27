@@ -8,8 +8,8 @@ import time
 # === Configurações ===
 symbols = ["BNBUSDT", "BTCUSDT", "DOGEUSDT", "SOLUSDT", "ADAUSDT", "ETHUSDT"]
 interval = "1"
-api_key = "TUA_API_KEY"
-api_secret = "TEU_API_SECRET"
+api_key = "TUA_API_KEY"       # <-- Coloca aqui a tua API Key
+api_secret = "TEU_API_SECRET" # <-- Coloca aqui o teu API Secret
 quantidade_usdt = 2
 
 session = HTTP(api_key=api_key, api_secret=api_secret, testnet=False)
@@ -46,6 +46,7 @@ def verificar_entrada(df):
     prev = df.iloc[-2]
     ultimos5 = df.iloc[-5:]
     ultimos20 = df.iloc[-20:]
+
     corpo = abs(row["close"] - row["open"])
     volatilidade = ultimos20["high"].max() - ultimos20["low"].min()
     media_atr = ultimos20["ATR"].mean()
@@ -69,12 +70,23 @@ def verificar_entrada(df):
     total_confirmados = sum(sinais_fortes) + sum(sinais_extras)
 
     if sum(sinais_fortes) >= 7:
+        preco_atual = row["close"]
+        diferenca_ema = abs(row["EMA10"] - row["EMA20"])
+        limite_colisao = preco_atual * 0.0005  # 0,05% do preço
+
+        if diferenca_ema < limite_colisao:
+            print(f"🚫 {row['timestamp']} | 7/9 sinais confirmados mas entrada bloqueada ❌")
+            print(f"    🔹 Motivo: EMA10 ({row['EMA10']:.2f}) e EMA20 ({row['EMA20']:.2f}) estão muito próximas (Δ {diferenca_ema:.5f}) < {limite_colisao:.5f}")
+            print(f"    🕒 Aguardar novo movimento antes de entrar...")
+            return None
+
         tendencia = "Buy" if row["EMA10"] > row["EMA20"] else "Sell"
         direcao_txt = "📈 EMA10>EMA20 ➔ BUY (LONG)" if tendencia == "Buy" else "📉 EMA10<EMA20 ➔ SELL (SHORT)"
-        print(f"🔎 {df['timestamp'].iloc[-1]} | {total_confirmados}/9 sinais confirmados | {direcao_txt}")
+        print(f"🔎 {row['timestamp']} | {total_confirmados}/9 sinais confirmados | {direcao_txt}")
         return tendencia
+
     else:
-        print(f"🔎 {df['timestamp'].iloc[-1]} | {total_confirmados}/9 sinais confirmados | Entrada bloqueada ❌")
+        print(f"🔎 {row['timestamp']} | {total_confirmados}/9 sinais confirmados | Entrada bloqueada ❌")
         return None
 
 def tentar_colocar_sl(symbol, preco_sl, quantidade, tentativas=3):
