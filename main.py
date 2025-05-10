@@ -1,4 +1,7 @@
-# === SukachBot PRO75 - OPERAÇÃO AO VIVO - LONG e SHORT - 7/9 SINAIS - SEGURANÇA AUTOMÁTICA ===
+# Recriar o conteúdo do script após reinício do ambiente
+
+codigo_execucao_real_unificado = '''
+# === SukachBot PRO - Execução Real com LONG Filtrado e SHORT Tradicional ===
 
 import pandas as pd
 import numpy as np
@@ -6,15 +9,13 @@ from pybit.unified_trading import HTTP
 import time
 
 # === Configurações ===
-symbols = ["BNBUSDT", "BTCUSDT", "DOGEUSDT", "SOLUSDT", "ADAUSDT", "ETHUSDT"]
+symbols = ["BTCUSDT", "ETHUSDT", "DOGEUSDT", "BNBUSDT", "SOLUSDT"]
 interval = "1"
-api_key = "TUA_API_KEY"       # <-- Coloca aqui a tua API Key
-api_secret = "TEU_API_SECRET" # <-- Coloca aqui o teu API Secret
-quantidade_usdt = 2
+api_key = "TUA_API_KEY"       # <-- Substituir aqui pela tua API key real
+api_secret = "TEU_API_SECRET" # <-- Substituir aqui pela tua API secret real
+quantidade_usdt = 5
 
 session = HTTP(api_key=api_key, api_secret=api_secret, testnet=False)
-
-# === Funções auxiliares ===
 
 def fetch_candles(symbol, interval="1"):
     try:
@@ -36,61 +37,53 @@ def calcular_indicadores(df):
     df["SINAL"] = df["MACD"].ewm(span=9).mean()
     df["CCI"] = (df["close"] - df["close"].rolling(20).mean()) / (0.015 * df["close"].rolling(20).std())
     df["ADX"] = abs(df["high"] - df["low"]).rolling(14).mean()
-    df["ATR"] = (df["high"] - df["low"]).rolling(14).mean()
     df["volume_medio"] = df["volume"].rolling(20).mean()
     df["volume_explosivo"] = df["volume"] > 1.3 * df["volume_medio"]
     return df
 
+def detectar_padrao_vela(row, prev):
+    corpo = abs(row["close"] - row["open"])
+    sombra_inferior = row["open"] - row["low"] if row["close"] > row["open"] else row["close"] - row["low"]
+    martelo = sombra_inferior > corpo * 2
+    engulfing = row["close"] > row["open"] and prev["close"] < prev["open"] and row["close"] > prev["open"] and row["open"] < prev["close"]
+    return martelo or engulfing
+
 def verificar_entrada(df):
     row = df.iloc[-1]
     prev = df.iloc[-2]
-    ultimos5 = df.iloc[-5:]
     ultimos20 = df.iloc[-20:]
+    estrutura_reversao = (
+        prev["close"] < prev["open"] and
+        row["close"] > prev["high"] and
+        row["volume"] > ultimos20["volume"].mean()
+    )
+    padrao_vela = detectar_padrao_vela(row, prev)
 
-    corpo = abs(row["close"] - row["open"])
-    volatilidade = ultimos20["high"].max() - ultimos20["low"].min()
-    media_atr = ultimos20["ATR"].mean()
-    nao_lateral = volatilidade > (2 * media_atr)
+    entrar_long = (
+        (estrutura_reversao or padrao_vela) and
+        row["EMA10"] > row["EMA20"] and
+        row["MACD"] > row["SINAL"] and
+        row["CCI"] > 0 and
+        row["ADX"] > 20 and
+        row["volume_explosivo"]
+    )
 
-    sinais_fortes = [
-        row["EMA10"] > row["EMA20"] or row["EMA10"] < row["EMA20"],
-        row["MACD"] > row["SINAL"],
-        row["CCI"] > 0,
-        row["ADX"] > 20,
-        row["volume_explosivo"],
-        corpo > ultimos5["close"].max() - ultimos5["low"].min(),
-        nao_lateral
-    ]
+    entrar_short = (
+        row["EMA10"] < row["EMA20"] and
+        row["MACD"] < row["SINAL"] and
+        row["CCI"] < 0 and
+        row["ADX"] > 20 and
+        row["volume_explosivo"] and
+        row["close"] < prev["close"]
+    )
 
-    sinais_extras = [
-        prev["close"] > prev["open"],
-        (row["high"] - row["close"]) < corpo
-    ]
-
-    total_confirmados = sum(sinais_fortes) + sum(sinais_extras)
-
-    if sum(sinais_fortes) >= 7:
-        preco_atual = row["close"]
-        diferenca_ema = abs(row["EMA10"] - row["EMA20"])
-        limite_colisao = preco_atual * 0.0005  # 0,05% do preço
-        percent_diff = (diferenca_ema / preco_atual) * 100  # diferença em %
-
-        print(f"🔔 {row['timestamp']} | 7/9 sinais fortes confirmados!")
-
-        if diferenca_ema < limite_colisao:
-            print(f"🚫 Entrada bloqueada ❌")
-            print(f"    🔹 Motivo: EMA10 ({row['EMA10']:.2f}) e EMA20 ({row['EMA20']:.2f}) estão muito próximas.")
-            print(f"    🔹 Diferença: {diferenca_ema:.5f} ({percent_diff:.5f}%) | Limite aceito: {limite_colisao:.5f}")
-            print(f"    🕒 Aguardar novo movimento para nova entrada...")
-            return None
-        else:
-            tendencia = "Buy" if row["EMA10"] > row["EMA20"] else "Sell"
-            direcao_txt = "📈 EMA10>EMA20 ➔ BUY (LONG)" if tendencia == "Buy" else "📉 EMA10<EMA20 ➔ SELL (SHORT)"
-            print(f"✅ Entrada confirmada! {direcao_txt}")
-            return tendencia
-
+    if entrar_long:
+        print(f"✅ LONG confirmado em {df.iloc[-1]['timestamp']}")
+        return "Buy"
+    elif entrar_short:
+        print(f"✅ SHORT confirmado em {df.iloc[-1]['timestamp']}")
+        return "Sell"
     else:
-        print(f"🔎 {row['timestamp']} | Apenas {total_confirmados}/9 sinais confirmados | Entrada bloqueada ❌ (não atingiu mínimo de 7 sinais)")
         return None
 
 def tentar_colocar_sl(symbol, preco_sl, quantidade, tentativas=3):
@@ -118,14 +111,14 @@ def tentar_colocar_sl(symbol, preco_sl, quantidade, tentativas=3):
                 time.sleep(1)
         if not sl_colocado:
             tentativas_feitas += 1
-            print(f"⏳ Esperando 15 segundos para tentar novamente colocar SL... (Tentativas falhadas: {tentativas_feitas})")
+            print(f"⏳ Esperando 15 segundos para tentar novamente colocar SL... ({tentativas_feitas} falhas)")
             time.sleep(15)
 
 def enviar_ordem(symbol, lado):
     try:
         preco_atual = float(session.get_ticker(category="linear", symbol=symbol)["result"]["lastPrice"])
         quantidade = round(quantidade_usdt / preco_atual, 3)
-        session.set_leverage(category="linear", symbol=symbol, buyLeverage=2, sellLeverage=2)
+        session.set_leverage(category="linear", symbol=symbol, buyLeverage=10, sellLeverage=10)
 
         session.place_order(
             category="linear",
@@ -147,10 +140,9 @@ def enviar_ordem(symbol, lado):
     except Exception as e:
         print(f"🚨 Erro ao enviar ordem: {e}")
         time.sleep(5)
-        enviar_ordem(symbol, lado)  # Tenta novamente
+        enviar_ordem(symbol, lado)
 
 # === Loop Principal ===
-
 while True:
     for symbol in symbols:
         try:
@@ -162,6 +154,14 @@ while True:
             else:
                 print(f"🔹 {symbol} sem entrada confirmada...")
         except Exception as e:
-            print(f"🚨 Erro geral no processamento de {symbol}: {e}")
+            print(f"🚨 Erro geral em {symbol}: {e}")
             time.sleep(5)
     time.sleep(1)
+'''
+
+# Salvar novamente
+from pathlib import Path
+script_path = Path("/mnt/data/sukachbot_execucao_real_LONG_SHORT_PRO_FINAL.py")
+script_path.write_text(codigo_execucao_real_unificado)
+script_path
+
