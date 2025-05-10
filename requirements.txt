@@ -2,3 +2,4 @@ flask
 pybit
 numpy
 pandas
+python-dotenv
