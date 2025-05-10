@@ -1,19 +1,19 @@
-# === SukachBot PRO75 - OPERAÇÃO AO VIVO - LONG e SHORT - 7/9 SINAIS - SEGURANÇA AUTOMÁTICA ===
-
-import os
-from dotenv import load_dotenv
-load_dotenv()
+# === SukachBot PRO75 - Filtro EMA Ajustado (0.01%) ===
 
 import pandas as pd
 import numpy as np
 from pybit.unified_trading import HTTP
 import time
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # === Configurações ===
 symbols = ["BNBUSDT", "BTCUSDT", "DOGEUSDT", "SOLUSDT", "ADAUSDT", "ETHUSDT"]
 interval = "1"
-api_key = os.getenv("BYBIT_API_KEY")       # <- vem do ficheiro .env
-api_secret = os.getenv("BYBIT_API_SECRET") # <- vem do ficheiro .env
+api_key = os.getenv("BYBIT_API_KEY")
+api_secret = os.getenv("BYBIT_API_SECRET")
 quantidade_usdt = 5
 
 session = HTTP(api_key=api_key, api_secret=api_secret, testnet=False)
@@ -76,22 +76,22 @@ def verificar_entrada(df):
     if sum(sinais_fortes) >= 7:
         preco_atual = row["close"]
         diferenca_ema = abs(row["EMA10"] - row["EMA20"])
-        limite_colisao = preco_atual * 0.0005  # 0,05%
-        percent_diff = (diferenca_ema / preco_atual) * 100
+        limite_colisao = preco_atual * 0.0001  # 0.01% agora
 
         print(f"🔔 {row['timestamp']} | 7/9 sinais fortes confirmados!")
 
         if diferenca_ema < limite_colisao:
             print(f"🚫 Entrada bloqueada ❌")
-            print(f"    🔹 EMA10 ({row['EMA10']:.2f}) e EMA20 ({row['EMA20']:.2f}) estão muito próximas.")
-            print(f"    🔹 Diferença: {diferenca_ema:.5f} ({percent_diff:.5f}%) | Limite aceito: {limite_colisao:.5f}")
+            print(f"    🔹 Motivo: EMA10 ({row['EMA10']:.2f}) e EMA20 ({row['EMA20']:.2f}) estão muito próximas.")
+            print(f"    🔹 Diferença: {diferenca_ema:.5f} | Limite aceito: {limite_colisao:.5f}")
             return None
         else:
             tendencia = "Buy" if row["EMA10"] > row["EMA20"] else "Sell"
             print(f"✅ Entrada confirmada! {tendencia}")
             return tendencia
+
     else:
-        print(f"🔎 {row['timestamp']} | Apenas {total_confirmados}/9 sinais confirmados | Entrada bloqueada ❌")
+        print(f"🔎 {row['timestamp']} | Apenas {total_confirmados}/9 sinais confirmados | Entrada bloqueada ❌ (não atingiu mínimo de 7 sinais fortes)")
         return None
 
 def tentar_colocar_sl(symbol, preco_sl, quantidade, tentativas=3):
@@ -119,7 +119,7 @@ def tentar_colocar_sl(symbol, preco_sl, quantidade, tentativas=3):
                 time.sleep(1)
         if not sl_colocado:
             tentativas_feitas += 1
-            print(f"⏳ Esperando 15s para tentar SL novamente... ({tentativas_feitas} falhas)")
+            print(f"⏳ Esperando 15 segundos para tentar novamente colocar SL... (Tentativas falhadas: {tentativas_feitas})")
             time.sleep(15)
 
 def enviar_ordem(symbol, lado):
@@ -139,7 +139,7 @@ def enviar_ordem(symbol, lado):
         print(f"🚀 Ordem {lado} executada em {symbol} ao preço de {preco_atual}")
 
         preco_entrada = preco_atual
-        sl = preco_entrada * (0.994 if lado == "Buy" else 1.006)
+        sl = preco_entrada * 0.994 if lado == "Buy" else preco_entrada * 1.006
         tentar_colocar_sl(symbol, sl, quantidade)
 
     except Exception as e:
@@ -163,5 +163,4 @@ while True:
             print(f"🚨 Erro geral no processamento de {symbol}: {e}")
             time.sleep(5)
     time.sleep(1)
-
 
