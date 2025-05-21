@@ -123,7 +123,7 @@ def tentar_colocar_sl(symbol, preco_sl, quantidade, tentativas=3):
 
 def enviar_ordem(symbol, lado):
     try:
-        preco_atual = float(session.get_market_price(category="linear", symbol=symbol)["result"]["price"])
+        preco_atual = float(session.get_ticker(symbol=symbol)['result']['lastPrice'])  # ✅ CORRIGIDO AQUI
         quantidade = round(quantidade_usdt / preco_atual, 3)
         session.set_leverage(category="linear", symbol=symbol, buyLeverage=10, sellLeverage=10)
 
