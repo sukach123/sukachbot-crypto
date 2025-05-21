@@ -116,6 +116,9 @@ def verificar_entrada(df):
             direcao = "Buy" if row["EMA10"] > row["EMA20"] else "Sell"
             print(f"✅ Entrada confirmada! {direcao}")
             return direcao
+    elif sum(sinais_fortes) == 4 and sum(sinais_extras) >= 3:
+        print(f"🔔 {row['timestamp']} | ⚠️ ALERTA: 4 sinais fortes + 3 extras detectados (verificação manual sugerida)")
+        return None
     else:
         print(f"🔎 {row['timestamp']} | Apenas {total_confirmados}/9 sinais confirmados | Entrada bloqueada ❌")
         return None
@@ -207,3 +210,4 @@ while True:
     tempo_execucao = time.time() - inicio
     if tempo_execucao < 1:
         time.sleep(1 - tempo_execucao)
+
