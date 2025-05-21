@@ -6,7 +6,7 @@ from pybit.unified_trading import HTTP
 import time
 import os
 from dotenv import load_dotenv
-from datetime import datetime
+from datetime import datetime, timezone
 
 load_dotenv()
 
@@ -28,7 +28,7 @@ def fetch_candles(symbol, interval="1"):
         df["timestamp"] = pd.to_datetime(pd.to_numeric(df["timestamp"]), unit="ms")
 
         # Verificar se candle está atrasado
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         diff = now - df["timestamp"].iloc[-1]
         if diff.total_seconds() > 60:
             print(f"⚠️ AVISO: Último candle de {symbol} está atrasado {int(diff.total_seconds())} segundos!")
