@@ -27,7 +27,6 @@ def fetch_candles(symbol, interval="1"):
         df = df.astype({"open": float, "high": float, "low": float, "close": float, "volume": float})
         df["timestamp"] = pd.to_datetime(pd.to_numeric(df["timestamp"]), unit="ms", utc=True)
 
-        # Verificar se candle está atrasado
         now = datetime.now(timezone.utc)
         diff = now - df["timestamp"].iloc[-1]
         atraso = int(diff.total_seconds())
@@ -67,39 +66,19 @@ def verificar_entrada(df):
     sinal_2 = row["MACD"] > row["SINAL"]
     sinal_3 = row["CCI"] > 0
     sinal_4 = row["ADX"] > 20
-    sinal_5 = row["volume_explosivo"]
-    sinal_6 = corpo > ultimos5["close"].max() - ultimos5["low"].min()
-    sinal_7 = nao_lateral
+    sinal_5 = nao_lateral
 
-    sinais_fortes = [
-        sinal_1,  # EMA10 vs EMA20
-        sinal_2,  # MACD > SINAL
-        sinal_3,  # CCI > 0
-        sinal_4,  # ADX > 20
-        sinal_7   # Não lateral
-    ]
+    sinais_fortes = [sinal_1, sinal_2, sinal_3, sinal_4, sinal_5]
 
+    sinal_6 = row["volume_explosivo"]
+    sinal_7 = corpo > ultimos5["close"].max() - ultimos5["low"].min()
     extra_1 = prev["close"] > prev["open"]
     extra_2 = (row["high"] - row["close"]) < corpo
-    sinais_extras = [
-        sinal_5,  # volume_explosivo
-        sinal_6,  # corpo_grande
-        extra_1,  # vela anterior de alta
-        extra_2   # pavio pequeno
-    ]
+    sinais_extras = [sinal_6, sinal_7, extra_1, extra_2]
 
     total_confirmados = sum(sinais_fortes) + sum(sinais_extras)
 
     print(f"\n📊 Diagnóstico de sinais em {row['timestamp']}")
-    print(f"📌 EMA10 vs EMA20: {sinal_1}")
-    print(f"📌 MACD > SINAL: {sinal_2}")
-    print(f"📌 CCI > 0: {sinal_3} (valor: {row['CCI']:.2f})")
-    print(f"📌 ADX > 20: {sinal_4} (valor: {row['ADX']:.2f})")
-    print(f"📌 Volume explosivo: {sinal_5} (volume: {row['volume']:.2f})")
-    print(f"📌 Corpo grande: {sinal_6}")
-    print(f"📌 Não lateral: {sinal_7}")
-    print(f"📌 Extra: Vela anterior de alta: {extra_1}")
-    print(f"📌 Extra: Pequeno pavio superior: {extra_2}")
     print(f"✔️ Total: {sum(sinais_fortes)} fortes + {sum(sinais_extras)} extras = {total_confirmados}/9")
 
     if sum(sinais_fortes) >= 6 or (sum(sinais_fortes) == 5 and sum(sinais_extras) >= 2):
@@ -110,7 +89,7 @@ def verificar_entrada(df):
         print(f"🔔 {row['timestamp']} | Entrada validada com 6 sinais ou 5+2 extras!")
 
         if diferenca_ema < limite_colisao:
-            print(f"🚫 Entrada bloqueada ❌")
+            print(f"🚫 Entrada bloqueada ❌ - Colisão de EMAs")
             return None
         else:
             direcao = "Buy" if row["EMA10"] > row["EMA20"] else "Sell"
@@ -124,8 +103,8 @@ def verificar_entrada(df):
         return None
 
 def colocar_sl_tp(symbol, lado, preco_entrada, quantidade):
-    preco_sl = preco_entrada * 0.997  # SL de -0.3%
-    preco_tp = preco_entrada * 1.015  # TP de +1.5%
+    preco_sl = preco_entrada * 0.997
+    preco_tp = preco_entrada * 1.015
 
     for tentativa in range(5):
         try:
@@ -163,20 +142,16 @@ def enviar_ordem(symbol, lado):
         preco_atual = float(dados_ticker['result']['list'][0]['lastPrice'])
         quantidade = round(quantidade_usdt / preco_atual, 6)
 
-        print(f"📦 Tentando enviar ordem:")
-        print(f"    ➤ Par: {symbol}")
-        print(f"    ➤ Direção: {lado}")
-        print(f"    ➤ Preço atual: {preco_atual}")
-        print(f"    ➤ Quantidade calculada: {quantidade}")
+        print(f"📦 Tentando enviar ordem:\n\n    ➤ Par: {symbol}\n    ➤ Direção: {lado}\n    ➤ Preço atual: {preco_atual}\n    ➤ Quantidade calculada: {quantidade}")
 
         if quantidade <= 0:
             print("🚫 Quantidade inválida! Ordem não enviada.")
             return
 
         try:
-        session.set_leverage(category="linear", symbol=symbol, buyLeverage=10, sellLeverage=10)
-    except Exception as e:
-        print(f"⚠️ Aviso: Erro ao definir alavancagem para {symbol} — já pode estar definida. Detalhes: {e}")
+            session.set_leverage(category="linear", symbol=symbol, buyLeverage=10, sellLeverage=10)
+        except Exception as e:
+            print(f"⚠️ Aviso: Erro ao definir alavancagem para {symbol} — já pode estar definida. Detalhes: {e}")
 
         response = session.place_order(
             category="linear",
