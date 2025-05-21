@@ -26,6 +26,13 @@ def fetch_candles(symbol, interval="1"):
         df = pd.DataFrame(candles, columns=["timestamp", "open", "high", "low", "close", "volume", "turnover"])
         df = df.astype({"open": float, "high": float, "low": float, "close": float, "volume": float})
         df["timestamp"] = pd.to_datetime(pd.to_numeric(df["timestamp"]), unit="ms")
+
+        # Verificar se candle está atrasado
+        now = datetime.utcnow()
+        diff = now - df["timestamp"].iloc[-1]
+        if diff.total_seconds() > 60:
+            print(f"⚠️ AVISO: Último candle de {symbol} está atrasado {int(diff.total_seconds())} segundos!")
+
         return df
     except Exception as e:
         print(f"🚨 Erro ao buscar candles de {symbol}: {e}")
@@ -188,5 +195,4 @@ while True:
     tempo_execucao = time.time() - inicio
     if tempo_execucao < 1:
         time.sleep(1 - tempo_execucao)
-
 
