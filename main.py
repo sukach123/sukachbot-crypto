@@ -45,6 +45,82 @@ def calcular_indicadores(df):
     df["volume_explosivo"] = df["volume"] > 1.3 * df["volume_medio"]
     return df
 
+def verificar_entrada(df):
+    row = df.iloc[-1]
+    prev = df.iloc[-2]
+    ultimos5 = df.iloc[-5:]
+    ultimos20 = df.iloc[-20:]
+
+    corpo = abs(row["close"] - row["open"])
+    volatilidade = ultimos20["high"].max() - ultimos20["low"].min()
+    media_atr = ultimos20["ATR"].mean()
+    nao_lateral = volatilidade > (2 * media_atr)
+
+    sinais_fortes = [
+        row["EMA10"] > row["EMA20"] or row["EMA10"] < row["EMA20"],
+        row["MACD"] > row["SINAL"],
+        row["CCI"] > 0,
+        row["ADX"] > 20,
+        row["volume_explosivo"],
+        corpo > ultimos5["close"].max() - ultimos5["low"].min(),
+        nao_lateral
+    ]
+
+    sinais_extras = [
+        prev["close"] > prev["open"],
+        (row["high"] - row["close"]) < corpo
+    ]
+
+    total_confirmados = sum(sinais_fortes) + sum(sinais_extras)
+
+    if sum(sinais_fortes) >= 7:
+        preco_atual = row["close"]
+        diferenca_ema = abs(row["EMA10"] - row["EMA20"])
+        limite_colisao = preco_atual * 0.0001  # 0.01%
+
+        print(f"🔔 {row['timestamp']} | 7/9 sinais fortes confirmados!")
+
+        if diferenca_ema < limite_colisao:
+            print(f"🚫 Entrada bloqueada ❌")
+            print(f"    🔹 Motivo: EMA10 ({row['EMA10']:.2f}) e EMA20 ({row['EMA20']:.2f}) estão muito próximas.")
+            print(f"    🔹 Diferença: {diferenca_ema:.5f} | Limite aceito: {limite_colisao:.5f}")
+            return None
+        else:
+            tendencia = "Buy" if row["EMA10"] > row["EMA20"] else "Sell"
+            print(f"✅ Entrada confirmada! {tendencia}")
+            return tendencia
+    else:
+        print(f"🔎 {row['timestamp']} | Apenas {total_confirmados}/9 sinais confirmados | Entrada bloqueada ❌ (não atingiu mínimo de 7 sinais fortes)")
+        return None
+
+def tentar_colocar_sl(symbol, preco_sl, quantidade, tentativas=3):
+    sl_colocado = False
+    tentativas_feitas = 0
+    while not sl_colocado:
+        for tentativa in range(tentativas):
+            try:
+                session.place_order(
+                    category="linear",
+                    symbol=symbol,
+                    side="Sell" if preco_sl < 1 else "Buy",
+                    orderType="Stop",
+                    qty=quantidade,
+                    price=round(preco_sl, 3),
+                    triggerPrice=round(preco_sl, 3),
+                    triggerBy="LastPrice",
+                    reduceOnly=True
+                )
+                print(f"🎯 SL colocado na tentativa {tentativa+1} com sucesso!")
+                sl_colocado = True
+                break
+            except Exception as e:
+                print(f"🚨 Erro ao colocar SL (tentativa {tentativa+1}): {e}")
+                time.sleep(1)
+        if not sl_colocado:
+            tentativas_feitas += 1
+            print(f"⏳ Esperando 15 segundos para tentar novamente colocar SL... (Falhas: {tentativas_feitas})")
+            time.sleep(15)
+
 def enviar_ordem(symbol, lado):
     try:
         preco_atual = float(session.get_market_price(category="linear", symbol=symbol)["result"]["price"])
@@ -76,7 +152,7 @@ while True:
     for symbol in symbols:
         try:
             df = fetch_candles(symbol)
-            df = calcular_indicadores(df)  # Agora a função está definida corretamente
+            df = calcular_indicadores(df)
             direcao = verificar_entrada(df)
             if direcao:
                 enviar_ordem(symbol, direcao)
