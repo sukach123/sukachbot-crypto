@@ -1,4 +1,4 @@
-# === SukachBot PRO75 - Diagnóstico de sinais + logs de execução de ordem ===
+# === SukachBot PRO75 - Margem Isolada + SL Protegido ===
 
 import pandas as pd
 import numpy as np
@@ -103,13 +103,13 @@ def verificar_entrada(df):
         print(f"🔎 {row['timestamp']} | Apenas {total_confirmados}/9 sinais confirmados | Entrada bloqueada ❌ (não atingiu mínimo de 7 sinais fortes)")
         return None
 
-def tentar_colocar_sl(symbol, preco_sl, quantidade, tentativas=3):
+def tentar_colocar_sl(symbol, preco_sl, quantidade, tentativas=5):
     sl_colocado = False
     tentativas_feitas = 0
     while not sl_colocado:
         for tentativa in range(tentativas):
             try:
-                session.place_order(
+                response = session.place_order(
                     category="linear",
                     symbol=symbol,
                     side="Sell" if preco_sl < 1 else "Buy",
@@ -118,9 +118,11 @@ def tentar_colocar_sl(symbol, preco_sl, quantidade, tentativas=3):
                     price=round(preco_sl, 3),
                     triggerPrice=round(preco_sl, 3),
                     triggerBy="LastPrice",
-                    reduceOnly=True
+                    reduceOnly=True,
+                    isIsolated=True  # 🔐 Garantir SL em margem isolada
                 )
-                print(f"🎯 SL colocado na tentativa {tentativa+1} com sucesso!")
+                print(f"🎯 SL colocado com sucesso na tentativa {tentativa+1}")
+                print(f"    📄 Resposta SL: {response}")
                 sl_colocado = True
                 break
             except Exception as e:
@@ -128,12 +130,11 @@ def tentar_colocar_sl(symbol, preco_sl, quantidade, tentativas=3):
                 time.sleep(1)
         if not sl_colocado:
             tentativas_feitas += 1
-            print(f"⏳ Esperando 15 segundos para tentar novamente colocar SL... (Falhas: {tentativas_feitas})")
+            print(f"⏳ Aguardando 15s para nova tentativa de SL... ({tentativas_feitas} falhas)")
             time.sleep(15)
 
 def enviar_ordem(symbol, lado):
     try:
-        # ✅ Substituído get_ticker por get_tickers corretamente
         dados_ticker = session.get_tickers(category="linear", symbol=symbol)
         preco_atual = float(dados_ticker['result']['list'][0]['lastPrice'])
         quantidade = round(quantidade_usdt / preco_atual, 3)
@@ -156,7 +157,8 @@ def enviar_ordem(symbol, lado):
             side=lado,
             orderType="Market",
             qty=quantidade,
-            reduceOnly=False
+            reduceOnly=False,
+            isIsolated=True  # ✅ Ativa margem isolada
         )
 
         print(f"🚀 Ordem {lado} executada com sucesso em {symbol}")
