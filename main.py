@@ -74,4 +74,3 @@ while True:
             print(f"🚨 Erro geral no processamento de {symbol}: {e}")
             time.sleep(5)
     time.sleep(1)
-
