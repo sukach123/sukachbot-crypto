@@ -1,4 +1,4 @@
-# === SukachBot PRO75 - Filtro EMA Ajustado (0.01%) ===
+# === SukachBot PRO75 - Execução em tempo real otimizada ===
 
 import pandas as pd
 import numpy as np
@@ -6,6 +6,7 @@ from pybit.unified_trading import HTTP
 import time
 import os
 from dotenv import load_dotenv
+from datetime import datetime
 
 load_dotenv()
 
@@ -18,8 +19,6 @@ quantidade_usdt = 5
 
 session = HTTP(api_key=api_key, api_secret=api_secret, testnet=False)
 
-# === Funções auxiliares ===
-
 def fetch_candles(symbol, interval="1"):
     try:
         data = session.get_kline(category="linear", symbol=symbol, interval=interval, limit=200)
@@ -30,7 +29,7 @@ def fetch_candles(symbol, interval="1"):
         return df
     except Exception as e:
         print(f"🚨 Erro ao buscar candles de {symbol}: {e}")
-        time.sleep(5)
+        time.sleep(1)
         return fetch_candles(symbol)
 
 def calcular_indicadores(df):
@@ -76,7 +75,7 @@ def verificar_entrada(df):
     if sum(sinais_fortes) >= 7:
         preco_atual = row["close"]
         diferenca_ema = abs(row["EMA10"] - row["EMA20"])
-        limite_colisao = preco_atual * 0.0001  # 0.01%
+        limite_colisao = preco_atual * 0.0001
 
         print(f"🔔 {row['timestamp']} | 7/9 sinais fortes confirmados!")
 
@@ -123,7 +122,7 @@ def tentar_colocar_sl(symbol, preco_sl, quantidade, tentativas=3):
 
 def enviar_ordem(symbol, lado):
     try:
-        preco_atual = float(session.get_ticker(symbol=symbol)['result']['lastPrice'])  # ✅ CORRIGIDO AQUI
+        preco_atual = float(session.get_ticker(symbol=symbol)['result']['lastPrice'])
         quantidade = round(quantidade_usdt / preco_atual, 3)
         session.set_leverage(category="linear", symbol=symbol, buyLeverage=10, sellLeverage=10)
 
@@ -143,12 +142,11 @@ def enviar_ordem(symbol, lado):
 
     except Exception as e:
         print(f"🚨 Erro ao enviar ordem: {e}")
-        time.sleep(5)
-        enviar_ordem(symbol, lado)
+        time.sleep(1)
 
-# === Loop Principal ===
-
+# === Loop Principal otimizado ===
 while True:
+    inicio = time.time()
     for symbol in symbols:
         try:
             df = fetch_candles(symbol)
@@ -160,6 +158,9 @@ while True:
                 print(f"🔹 {symbol} sem entrada confirmada...")
         except Exception as e:
             print(f"🚨 Erro geral no processamento de {symbol}: {e}")
-            time.sleep(5)
-    time.sleep(1)
+            time.sleep(1)
+    # Espera até completar 1 segundo no total (ajuste fino para execução precisa)
+    tempo_execucao = time.time() - inicio
+    if tempo_execucao < 1:
+        time.sleep(1 - tempo_execucao)
 
