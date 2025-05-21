@@ -55,24 +55,32 @@ def verificar_entrada(df):
     media_atr = ultimos20["ATR"].mean()
     nao_lateral = volatilidade > (2 * media_atr)
 
-    sinais_fortes = [
-        row["EMA10"] > row["EMA20"] or row["EMA10"] < row["EMA20"],
-        row["MACD"] > row["SINAL"],
-        row["CCI"] > 0,
-        row["ADX"] > 20,
-        row["volume_explosivo"],
-        corpo > ultimos5["close"].max() - ultimos5["low"].min(),
-        nao_lateral
-    ]
+    sinal_1 = row["EMA10"] > row["EMA20"] or row["EMA10"] < row["EMA20"]
+    sinal_2 = row["MACD"] > row["SINAL"]
+    sinal_3 = row["CCI"] > 0
+    sinal_4 = row["ADX"] > 20
+    sinal_5 = row["volume_explosivo"]
+    sinal_6 = corpo > ultimos5["close"].max() - ultimos5["low"].min()
+    sinal_7 = nao_lateral
 
-    sinais_extras = [
-        prev["close"] > prev["open"],
-        (row["high"] - row["close"]) < corpo
-    ]
+    sinais_fortes = [sinal_1, sinal_2, sinal_3, sinal_4, sinal_5, sinal_6, sinal_7]
+
+    extra_1 = prev["close"] > prev["open"]
+    extra_2 = (row["high"] - row["close"]) < corpo
+    sinais_extras = [extra_1, extra_2]
 
     total_confirmados = sum(sinais_fortes) + sum(sinais_extras)
 
     print(f"\n📊 Diagnóstico de sinais em {row['timestamp']}")
+    print(f"📌 EMA10 vs EMA20: {sinal_1}")
+    print(f"📌 MACD > SINAL: {sinal_2}")
+    print(f"📌 CCI > 0: {sinal_3} (valor: {row['CCI']:.2f})")
+    print(f"📌 ADX > 20: {sinal_4} (valor: {row['ADX']:.2f})")
+    print(f"📌 Volume explosivo: {sinal_5} (volume: {row['volume']:.2f})")
+    print(f"📌 Corpo grande: {sinal_6}")
+    print(f"📌 Não lateral: {sinal_7}")
+    print(f"📌 Extra: Vela anterior de alta: {extra_1}")
+    print(f"📌 Extra: Pequeno pavio superior: {extra_2}")
     print(f"✔️ Total: {sum(sinais_fortes)} fortes + {sum(sinais_extras)} extras = {total_confirmados}/9")
 
     if sum(sinais_fortes) >= 7:
@@ -92,92 +100,4 @@ def verificar_entrada(df):
     else:
         print(f"🔎 {row['timestamp']} | Apenas {total_confirmados}/9 sinais confirmados | Entrada bloqueada ❌")
         return None
-
-def colocar_sl_tp(symbol, lado, preco_entrada, quantidade):
-    preco_sl = preco_entrada * 0.994 if lado == "Buy" else preco_entrada * 1.006
-    preco_tp = preco_entrada * 1.015 if lado == "Buy" else preco_entrada * 0.985
-
-    for tentativa in range(5):
-        try:
-            session.place_order(
-                category="linear",
-                symbol=symbol,
-                side="Sell" if lado == "Buy" else "Buy",
-                orderType="Stop",
-                qty=quantidade,
-                price=round(preco_sl, 3),
-                triggerPrice=round(preco_sl, 3),
-                triggerBy="LastPrice",
-                reduceOnly=True,
-                isIsolated=True
-            )
-            session.place_order(
-                category="linear",
-                symbol=symbol,
-                side="Sell" if lado == "Buy" else "Buy",
-                orderType="Limit",
-                qty=quantidade,
-                price=round(preco_tp, 3),
-                reduceOnly=True,
-                isIsolated=True
-            )
-            print(f"🎯 SL e TP colocados com sucesso!")
-            return
-        except Exception as e:
-            print(f"⚠️ Erro ao colocar SL/TP (tentativa {tentativa+1}): {e}")
-            time.sleep(2)
-
-def enviar_ordem(symbol, lado):
-    try:
-        dados_ticker = session.get_tickers(category="linear", symbol=symbol)
-        preco_atual = float(dados_ticker['result']['list'][0]['lastPrice'])
-        quantidade = round(quantidade_usdt / preco_atual, 3)
-
-        print(f"📦 Tentando enviar ordem:")
-        print(f"    ➔ Par: {symbol}")
-        print(f"    ➔ Direção: {lado}")
-        print(f"    ➔ Preço atual: {preco_atual}")
-        print(f"    ➔ Quantidade calculada: {quantidade}")
-
-        if quantidade <= 0:
-            print("🚫 Quantidade inválida! Ordem não enviada.")
-            return
-
-        session.set_leverage(category="linear", symbol=symbol, buyLeverage=10, sellLeverage=10)
-
-        response = session.place_order(
-            category="linear",
-            symbol=symbol,
-            side=lado,
-            orderType="Market",
-            qty=quantidade,
-            reduceOnly=False,
-            isIsolated=True
-        )
-
-        print(f"🚀 Ordem {lado} executada com sucesso!")
-        colocar_sl_tp(symbol, lado, preco_atual, quantidade)
-
-    except Exception as e:
-        print(f"🚨 Erro ao enviar ordem: {e}")
-        time.sleep(1)
-
-# === Loop Principal ===
-while True:
-    inicio = time.time()
-    for symbol in symbols:
-        try:
-            df = fetch_candles(symbol)
-            df = calcular_indicadores(df)
-            direcao = verificar_entrada(df)
-            if direcao:
-                enviar_ordem(symbol, direcao)
-            else:
-                print(f"🔹 {symbol} sem entrada confirmada...")
-        except Exception as e:
-            print(f"🚨 Erro geral no processamento de {symbol}: {e}")
-            time.sleep(1)
-    tempo_execucao = time.time() - inicio
-    if tempo_execucao < 1:
-        time.sleep(1 - tempo_execucao)
 
