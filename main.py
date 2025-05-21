@@ -1,4 +1,4 @@
-# === SukachBot PRO75 - Diagnóstico de sinais ===
+# === SukachBot PRO75 - Diagnóstico de sinais + logs de execução de ordem ===
 
 import pandas as pd
 import numpy as np
@@ -133,11 +133,24 @@ def tentar_colocar_sl(symbol, preco_sl, quantidade, tentativas=3):
 
 def enviar_ordem(symbol, lado):
     try:
-        preco_atual = float(session.get_ticker(symbol=symbol)['result']['lastPrice'])
+        # ✅ Substituído get_ticker por get_tickers corretamente
+        dados_ticker = session.get_tickers(category="linear", symbol=symbol)
+        preco_atual = float(dados_ticker['result']['list'][0]['lastPrice'])
         quantidade = round(quantidade_usdt / preco_atual, 3)
+
+        print(f"📦 Tentando enviar ordem:")
+        print(f"    ➤ Par: {symbol}")
+        print(f"    ➤ Direção: {lado}")
+        print(f"    ➤ Preço atual: {preco_atual}")
+        print(f"    ➤ Quantidade calculada: {quantidade}")
+
+        if quantidade <= 0:
+            print("🚫 Quantidade inválida! Ordem não enviada.")
+            return
+
         session.set_leverage(category="linear", symbol=symbol, buyLeverage=10, sellLeverage=10)
 
-        session.place_order(
+        response = session.place_order(
             category="linear",
             symbol=symbol,
             side=lado,
@@ -145,7 +158,9 @@ def enviar_ordem(symbol, lado):
             qty=quantidade,
             reduceOnly=False
         )
-        print(f"🚀 Ordem {lado} executada em {symbol} ao preço de {preco_atual}")
+
+        print(f"🚀 Ordem {lado} executada com sucesso em {symbol}")
+        print(f"    📄 Resposta da API: {response}")
 
         preco_entrada = preco_atual
         sl = preco_entrada * 0.994 if lado == "Buy" else preco_entrada * 1.006
@@ -173,5 +188,4 @@ while True:
     tempo_execucao = time.time() - inicio
     if tempo_execucao < 1:
         time.sleep(1 - tempo_execucao)
-
 
