@@ -161,7 +161,7 @@ def enviar_ordem(symbol, lado):
     try:
         dados_ticker = session.get_tickers(category="linear", symbol=symbol)
         preco_atual = float(dados_ticker['result']['list'][0]['lastPrice'])
-        quantidade = round(quantidade_usdt / preco_atual, 3)
+        quantidade = round(quantidade_usdt / preco_atual, 6)
 
         print(f"📦 Tentando enviar ordem:")
         print(f"    ➤ Par: {symbol}")
