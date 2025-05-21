@@ -102,12 +102,12 @@ def verificar_entrada(df):
     print(f"📌 Extra: Pequeno pavio superior: {extra_2}")
     print(f"✔️ Total: {sum(sinais_fortes)} fortes + {sum(sinais_extras)} extras = {total_confirmados}/9")
 
-    if sum(sinais_fortes) >= 6:
+    if sum(sinais_fortes) >= 6 or (sum(sinais_fortes) == 5 and sum(sinais_extras) >= 2):
         preco_atual = row["close"]
         diferenca_ema = abs(row["EMA10"] - row["EMA20"])
         limite_colisao = preco_atual * 0.0001
 
-        print(f"🔔 {row['timestamp']} | 7/9 sinais fortes confirmados!")
+        print(f"🔔 {row['timestamp']} | Entrada validada com 6 sinais ou 5+2 extras!")
 
         if diferenca_ema < limite_colisao:
             print(f"🚫 Entrada bloqueada ❌")
@@ -207,4 +207,3 @@ while True:
     tempo_execucao = time.time() - inicio
     if tempo_execucao < 1:
         time.sleep(1 - tempo_execucao)
-
