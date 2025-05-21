@@ -30,8 +30,9 @@ def fetch_candles(symbol, interval="1"):
         # Verificar se candle está atrasado
         now = datetime.now(timezone.utc)
         diff = now - df["timestamp"].iloc[-1]
-        if diff.total_seconds() > 60:
-            print(f"⚠️ AVISO: Último candle de {symbol} está atrasado {int(diff.total_seconds())} segundos!")
+        atraso = int(diff.total_seconds())
+        if 60 < atraso < 300:
+            print(f"⚠️ AVISO: Último candle de {symbol} está atrasado {atraso} segundos!")
 
         return df
     except Exception as e:
