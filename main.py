@@ -71,11 +71,22 @@ def verificar_entrada(df):
     sinal_6 = corpo > ultimos5["close"].max() - ultimos5["low"].min()
     sinal_7 = nao_lateral
 
-    sinais_fortes = [sinal_1, sinal_2, sinal_3, sinal_4, sinal_5, sinal_6, sinal_7]
+    sinais_fortes = [
+        sinal_1,  # EMA10 vs EMA20
+        sinal_2,  # MACD > SINAL
+        sinal_3,  # CCI > 0
+        sinal_4,  # ADX > 20
+        sinal_7   # Não lateral
+    ]
 
     extra_1 = prev["close"] > prev["open"]
     extra_2 = (row["high"] - row["close"]) < corpo
-    sinais_extras = [extra_1, extra_2]
+    sinais_extras = [
+        sinal_5,  # volume_explosivo
+        sinal_6,  # corpo_grande
+        extra_1,  # vela anterior de alta
+        extra_2   # pavio pequeno
+    ]
 
     total_confirmados = sum(sinais_fortes) + sum(sinais_extras)
 
@@ -91,7 +102,7 @@ def verificar_entrada(df):
     print(f"📌 Extra: Pequeno pavio superior: {extra_2}")
     print(f"✔️ Total: {sum(sinais_fortes)} fortes + {sum(sinais_extras)} extras = {total_confirmados}/9")
 
-    if sum(sinais_fortes) >= 7:
+    if sum(sinais_fortes) >= 6:
         preco_atual = row["close"]
         diferenca_ema = abs(row["EMA10"] - row["EMA20"])
         limite_colisao = preco_atual * 0.0001
@@ -196,5 +207,4 @@ while True:
     tempo_execucao = time.time() - inicio
     if tempo_execucao < 1:
         time.sleep(1 - tempo_execucao)
-
 
