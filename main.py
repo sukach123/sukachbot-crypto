@@ -83,7 +83,7 @@ def verificar_entrada(df):
         print(f"🔔 {row['timestamp']} | 7/9 sinais fortes confirmados!")
 
         if diferenca_ema < limite_colisao:
-            print(f"🚫 Entrada bloqueada ❌ - EMAs muito próximas.")
+            print(f"🚫 Entrada bloqueada ❌")
             return None
         else:
             direcao = "Buy" if row["EMA10"] > row["EMA20"] else "Sell"
@@ -99,7 +99,7 @@ def colocar_sl_tp(symbol, lado, preco_entrada, quantidade):
 
     for tentativa in range(5):
         try:
-            sl_response = session.place_order(
+            session.place_order(
                 category="linear",
                 symbol=symbol,
                 side="Sell" if lado == "Buy" else "Buy",
@@ -111,8 +111,7 @@ def colocar_sl_tp(symbol, lado, preco_entrada, quantidade):
                 reduceOnly=True,
                 isIsolated=True
             )
-
-            tp_response = session.place_order(
+            session.place_order(
                 category="linear",
                 symbol=symbol,
                 side="Sell" if lado == "Buy" else "Buy",
@@ -122,9 +121,7 @@ def colocar_sl_tp(symbol, lado, preco_entrada, quantidade):
                 reduceOnly=True,
                 isIsolated=True
             )
-
             print(f"🎯 SL e TP colocados com sucesso!")
-            print(f"    🔹 SL: {round(preco_sl, 3)} | TP: {round(preco_tp, 3)}")
             return
         except Exception as e:
             print(f"⚠️ Erro ao colocar SL/TP (tentativa {tentativa+1}): {e}")
@@ -132,11 +129,15 @@ def colocar_sl_tp(symbol, lado, preco_entrada, quantidade):
 
 def enviar_ordem(symbol, lado):
     try:
-        ticker_data = session.get_tickers(category="linear", symbol=symbol)
-        preco_atual = float(ticker_data['result']['list'][0]['lastPrice'])
+        dados_ticker = session.get_tickers(category="linear", symbol=symbol)
+        preco_atual = float(dados_ticker['result']['list'][0]['lastPrice'])
         quantidade = round(quantidade_usdt / preco_atual, 3)
 
-        print(f"📦 Enviando ordem {lado} para {symbol} | Preço: {preco_atual} | Qtd: {quantidade}")
+        print(f"📦 Tentando enviar ordem:")
+        print(f"    ➔ Par: {symbol}")
+        print(f"    ➔ Direção: {lado}")
+        print(f"    ➔ Preço atual: {preco_atual}")
+        print(f"    ➔ Quantidade calculada: {quantidade}")
 
         if quantidade <= 0:
             print("🚫 Quantidade inválida! Ordem não enviada.")
@@ -155,8 +156,6 @@ def enviar_ordem(symbol, lado):
         )
 
         print(f"🚀 Ordem {lado} executada com sucesso!")
-        print(f"    📄 Resposta: {response}")
-
         colocar_sl_tp(symbol, lado, preco_atual, quantidade)
 
     except Exception as e:
@@ -181,3 +180,4 @@ while True:
     tempo_execucao = time.time() - inicio
     if tempo_execucao < 1:
         time.sleep(1 - tempo_execucao)
+
