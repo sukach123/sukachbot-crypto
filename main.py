@@ -67,3 +67,23 @@ def enviar_ordem(symbol, lado):
 
     except Exception as e:
         print(f"🚨 Erro ao enviar ordem: {e}")
+        time.sleep(5)
+        enviar_ordem(symbol, lado)
+
+# === Loop Principal ===
+
+while True:
+    for symbol in symbols:
+        try:
+            df = fetch_candles(symbol)
+            df = calcular_indicadores(df)  # Agora a função está definida corretamente
+            direcao = verificar_entrada(df)
+            if direcao:
+                enviar_ordem(symbol, direcao)
+            else:
+                print(f"🔹 {symbol} sem entrada confirmada...")
+        except Exception as e:
+            print(f"🚨 Erro geral no processamento de {symbol}: {e}")
+            time.sleep(5)
+    time.sleep(1)
+
