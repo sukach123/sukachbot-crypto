@@ -173,7 +173,10 @@ def enviar_ordem(symbol, lado):
             print("🚫 Quantidade inválida! Ordem não enviada.")
             return
 
+        try:
         session.set_leverage(category="linear", symbol=symbol, buyLeverage=10, sellLeverage=10)
+    except Exception as e:
+        print(f"⚠️ Aviso: Erro ao definir alavancagem para {symbol} — já pode estar definida. Detalhes: {e}")
 
         response = session.place_order(
             category="linear",
@@ -210,4 +213,3 @@ while True:
     tempo_execucao = time.time() - inicio
     if tempo_execucao < 1:
         time.sleep(1 - tempo_execucao)
-
