@@ -1,4 +1,4 @@
-# === SukachBot PRO75 - Execução em tempo real otimizada ===
+# === SukachBot PRO75 - Diagnóstico de sinais ===
 
 import pandas as pd
 import numpy as np
@@ -55,22 +55,33 @@ def verificar_entrada(df):
     media_atr = ultimos20["ATR"].mean()
     nao_lateral = volatilidade > (2 * media_atr)
 
-    sinais_fortes = [
-        row["EMA10"] > row["EMA20"] or row["EMA10"] < row["EMA20"],
-        row["MACD"] > row["SINAL"],
-        row["CCI"] > 0,
-        row["ADX"] > 20,
-        row["volume_explosivo"],
-        corpo > ultimos5["close"].max() - ultimos5["low"].min(),
-        nao_lateral
-    ]
+    sinal_1 = row["EMA10"] > row["EMA20"] or row["EMA10"] < row["EMA20"]
+    sinal_2 = row["MACD"] > row["SINAL"]
+    sinal_3 = row["CCI"] > 0
+    sinal_4 = row["ADX"] > 20
+    sinal_5 = row["volume_explosivo"]
+    sinal_6 = corpo > ultimos5["close"].max() - ultimos5["low"].min()
+    sinal_7 = nao_lateral
 
-    sinais_extras = [
-        prev["close"] > prev["open"],
-        (row["high"] - row["close"]) < corpo
-    ]
+    sinais_fortes = [sinal_1, sinal_2, sinal_3, sinal_4, sinal_5, sinal_6, sinal_7]
+
+    extra_1 = prev["close"] > prev["open"]
+    extra_2 = (row["high"] - row["close"]) < corpo
+    sinais_extras = [extra_1, extra_2]
 
     total_confirmados = sum(sinais_fortes) + sum(sinais_extras)
+
+    print(f"\n📊 Diagnóstico de sinais em {row['timestamp']}")
+    print(f"📌 EMA10 vs EMA20: {sinal_1}")
+    print(f"📌 MACD > SINAL: {sinal_2}")
+    print(f"📌 CCI > 0: {sinal_3} (valor: {row['CCI']:.2f})")
+    print(f"📌 ADX > 20: {sinal_4} (valor: {row['ADX']:.2f})")
+    print(f"📌 Volume explosivo: {sinal_5} (volume: {row['volume']:.2f})")
+    print(f"📌 Corpo grande: {sinal_6}")
+    print(f"📌 Não lateral: {sinal_7}")
+    print(f"📌 Extra: Vela anterior de alta: {extra_1}")
+    print(f"📌 Extra: Pequeno pavio superior: {extra_2}")
+    print(f"✔️ Total: {sum(sinais_fortes)} fortes + {sum(sinais_extras)} extras = {total_confirmados}/9")
 
     if sum(sinais_fortes) >= 7:
         preco_atual = row["close"]
@@ -144,7 +155,7 @@ def enviar_ordem(symbol, lado):
         print(f"🚨 Erro ao enviar ordem: {e}")
         time.sleep(1)
 
-# === Loop Principal otimizado ===
+# === Loop Principal ===
 while True:
     inicio = time.time()
     for symbol in symbols:
@@ -159,8 +170,8 @@ while True:
         except Exception as e:
             print(f"🚨 Erro geral no processamento de {symbol}: {e}")
             time.sleep(1)
-    # Espera até completar 1 segundo no total (ajuste fino para execução precisa)
     tempo_execucao = time.time() - inicio
     if tempo_execucao < 1:
         time.sleep(1 - tempo_execucao)
+
 
