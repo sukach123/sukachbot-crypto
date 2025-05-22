@@ -104,6 +104,16 @@ def verificar_entrada(df):
         return None
 
 def colocar_sl_tp(symbol, lado, preco_entrada, quantidade):
+    # Verificar quantidade mínima antes de colocar SL/TP
+    min_qty_map = {
+        "BTCUSDT": 0.001,
+        "ETHUSDT": 0.01
+    }
+    min_qty = min_qty_map.get(symbol, 0.1)
+
+    if quantidade < min_qty:
+        print(f"🚫 SL/TP não enviado: quantidade {quantidade} inferior ao mínimo permitido para {symbol} ({min_qty})")
+        return
     preco_sl = preco_entrada * 0.997
     preco_tp = preco_entrada * 1.015
 
@@ -142,6 +152,17 @@ def enviar_ordem(symbol, lado):
         dados_ticker = session.get_tickers(category="linear", symbol=symbol)
         preco_atual = float(dados_ticker['result']['list'][0]['lastPrice'])
         quantidade = round(quantidade_usdt / preco_atual, 6)
+
+        # Verificar quantidade mínima permitida por símbolo
+        min_qty_map = {
+            "BTCUSDT": 0.001,
+            "ETHUSDT": 0.01
+        }
+        min_qty = min_qty_map.get(symbol, 0.1)
+
+        if quantidade < min_qty:
+            print(f"🚫 Quantidade {quantidade} é inferior ao mínimo permitido para {symbol} ({min_qty}). Ordem não enviada.")
+            return
 
         print(f"📦 Tentando enviar ordem:\n\n    ➤ Par: {symbol}\n    ➤ Direção: {lado}\n    ➤ Preço atual: {preco_atual}\n    ➤ Quantidade calculada: {quantidade}")
 
