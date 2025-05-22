@@ -231,7 +231,6 @@ while True:
         except Exception as e:
             print(f"🚨 Erro geral no processamento de {symbol}: {e}")
             time.sleep(1)
-    tempo_execucao = time.time() - inicio
-    if tempo_execucao < 1:
-        time.sleep(1 - tempo_execucao)
+    # Execução contínua sem atrasos
+    time.sleep(1)
 
