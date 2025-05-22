@@ -223,6 +223,10 @@ def enviar_ordem(symbol, lado):
                     return
                 else:
                     print(f"❌ Ordem falhou: {response.get('retMsg', 'Erro desconhecido')}")
+            except Exception as e:
+                print(f"❌ Erro ao enviar ordem (tentativa {tentativas+1}): {e}")
+                time.sleep(2)
+            tentativas += 1
                 
 
 
