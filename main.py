@@ -151,7 +151,7 @@ def enviar_ordem(symbol, lado):
     try:
         dados_ticker = session.get_tickers(category="linear", symbol=symbol)
         preco_atual = float(dados_ticker['result']['list'][0]['lastPrice'])
-        quantidade = round(quantidade_usdt / preco_atual, 6)
+        quantidade = round(max(quantidade_usdt / preco_atual, 0.001), 6)  # Garante quantidade mínima de 0.001
 
         # Verificar quantidade mínima permitida por símbolo
         min_qty_map = {
