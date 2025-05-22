@@ -227,5 +227,5 @@ def enviar_ordem(symbol, lado):
                 print(f"❌ Erro ao enviar ordem (tentativa {tentativas+1}): {e}")
                 time.sleep(2)
             tentativas += 1
-                
+            
 
