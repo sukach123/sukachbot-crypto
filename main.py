@@ -151,7 +151,16 @@ def enviar_ordem(symbol, lado):
     try:
         dados_ticker = session.get_tickers(category="linear", symbol=symbol)
         preco_atual = float(dados_ticker['result']['list'][0]['lastPrice'])
-        quantidade = round(max(quantidade_usdt / preco_atual, 0.001), 6)  # Garante quantidade mínima de 0.001
+        min_qty_map = {
+            "BTCUSDT": 0.001,
+            "ETHUSDT": 0.01,
+            "BNBUSDT": 0.1,
+            "DOGEUSDT": 10,
+            "SOLUSDT": 0.1,
+            "ADAUSDT": 1
+        }
+        min_qty = min_qty_map.get(symbol, 0.1)
+        quantidade = round(max(quantidade_usdt / preco_atual, min_qty), 6)  # Garante quantidade mínima por par
 
         # Verificar quantidade mínima permitida por símbolo
         min_qty_map = {
