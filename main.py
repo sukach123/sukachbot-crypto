@@ -188,18 +188,29 @@ def enviar_ordem(symbol, lado):
         except Exception as e:
             print(f"⚠️ Aviso: Erro ao definir alavancagem para {symbol} — já pode estar definida. Detalhes: {e}")
 
-        response = session.place_order(
-            category="linear",
-            symbol=symbol,
-            side=lado,
-            orderType="Market",
-            qty=quantidade,
-            reduceOnly=False,
-            isIsolated=True
-        )
+        tentativas = 0
+        while tentativas < 5:
+            try:
+                response = session.place_order(
+                    category="linear",
+                    symbol=symbol,
+                    side=lado,
+                    orderType="Market",
+                    qty=quantidade,
+                    reduceOnly=False,
+                    isIsolated=True,
+                    takeProfit=round(preco_atual * 1.015, 3),
+                    stopLoss=round(preco_atual * 0.997, 3)
+                )
+                print(f"🚀 Ordem {lado} executada com sucesso!")
+                return
+            except Exception as e:
+                tentativas += 1
+                print(f"🚨 Erro ao enviar ordem (tentativa {tentativas}): {e}")
+                time.sleep(2)
 
         print(f"🚀 Ordem {lado} executada com sucesso!")
-        colocar_sl_tp(symbol, lado, preco_atual, quantidade)
+        # colocar_sl_tp removido pois SL/TP já é incluído na ordem Market
 
     except Exception as e:
         print(f"🚨 Erro ao enviar ordem: {e}")
