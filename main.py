@@ -219,42 +219,11 @@ def enviar_ordem(symbol, lado):
                 )
 
                 if response.get("retCode") == 0:
-                    # Sucesso só é declarado acima com base no retCode
+                    print(f"🚀 Ordem {lado} executada com sucesso!")
+                    return
                 else:
                     print(f"❌ Ordem falhou: {response.get('retMsg', 'Erro desconhecido')}")
-                return if lado == "Sell" else round(preco_atual * 1.015, 3),
-                    stopLoss=round(preco_atual * 1.003, 3) if lado == "Sell" else round(preco_atual * 0.997, 3)
-                )
-                print(f"🚀 Ordem {lado} executada com sucesso!")
-                return
-            except Exception as e:
-                tentativas += 1
-                print(f"🚨 Erro ao enviar ordem (tentativa {tentativas}): {e}")
-                time.sleep(2)
+                
 
-        print(f"🚀 Ordem {lado} executada com sucesso!")
-        # colocar_sl_tp removido pois SL/TP já é incluído na ordem Market
-
-    except Exception as e:
-        print(f"🚨 Erro ao enviar ordem: {e}")
-        time.sleep(1)
-
-# === Loop Principal ===
-while True:
-    inicio = time.time()
-    for symbol in symbols:
-        try:
-            df = fetch_candles(symbol)
-            df = calcular_indicadores(df)
-            direcao = verificar_entrada(df)
-            if direcao:
-                enviar_ordem(symbol, direcao)
-            else:
-                print(f"🔹 {symbol} sem entrada confirmada...")
-        except Exception as e:
-            print(f"🚨 Erro geral no processamento de {symbol}: {e}")
-            time.sleep(1)
-    # Execução contínua sem atrasos
-    time.sleep(1)
 
 
