@@ -176,7 +176,7 @@ def enviar_ordem(symbol, lado):
             print(f"🚫 Quantidade {quantidade} é inferior ao mínimo permitido para {symbol} ({min_qty}). Ordem não enviada.")
             return
 
-        print(f"📦 Tentando enviar ordem:\n\n    ➔ Par: {symbol}\n    ➔ Direção: {lado}\n    ➔ Preço atual: {preco_atual}\n    ➔ Quantidade calculada: {quantidade}")
+        print(f"📦 Tentando enviar ordem:\n\n    ➤ Par: {symbol}\n    ➤ Direção: {lado}\n    ➤ Preço atual: {preco_atual}\n    ➤ Quantidade calculada: {quantidade}")
 
         if quantidade <= 0:
             print("🚫 Quantidade inválida! Ordem não enviada.")
@@ -211,5 +211,4 @@ def enviar_ordem(symbol, lado):
                 print(f"❌ Erro ao enviar ordem (tentativa {tentativas+1}): {e}")
                 time.sleep(2)
             tentativas += 1
-
 
