@@ -12,7 +12,6 @@ load_dotenv()
 
 print("🚧 MODO DEMO ATIVO - Bybit Testnet em execução 🚧")
 
-
 # === Configurações ===
 api_key = os.getenv("BYBIT_API_KEY")
 api_secret = os.getenv("BYBIT_API_SECRET")
@@ -26,13 +25,10 @@ try:
     print(f"💰 Saldo disponível (simulado): {saldo_usdt} USDT")
 except Exception as e:
     print(f"❌ Falha ao conectar à API: {e}")
+
 symbols = ["BNBUSDT", "BTCUSDT", "DOGEUSDT", "SOLUSDT", "ADAUSDT", "ETHUSDT"]
 interval = "1"
-api_key = os.getenv("BYBIT_API_KEY")
-api_secret = os.getenv("BYBIT_API_SECRET")
 quantidade_usdt = 5
-
-session = HTTP(api_key=api_key, api_secret=api_secret, testnet=True)
 
 def fetch_candles(symbol, interval="1"):
     try:
@@ -119,7 +115,6 @@ def verificar_entrada(df):
         return None
 
 def colocar_sl_tp(symbol, lado, preco_entrada, quantidade):
-    # Verificar quantidade mínima antes de colocar SL/TP
     min_qty_map = {
         "BTCUSDT": 0.001,
         "ETHUSDT": 0.01
@@ -175,24 +170,13 @@ def enviar_ordem(symbol, lado):
             "ADAUSDT": 1
         }
         min_qty = min_qty_map.get(symbol, 0.1)
-        quantidade = round(max(quantidade_usdt / preco_atual, min_qty), 6)  # Garante quantidade mínima por par
-
-        # Verificar quantidade mínima permitida por símbolo
-        min_qty_map = {
-            "BTCUSDT": 0.001,
-            "ETHUSDT": 0.01,
-            "BNBUSDT": 0.1,
-            "DOGEUSDT": 10,
-            "SOLUSDT": 0.1,
-            "ADAUSDT": 1
-        }
-        min_qty = min_qty_map.get(symbol, 0.1)
+        quantidade = round(max(quantidade_usdt / preco_atual, min_qty), 6)
 
         if quantidade < min_qty:
             print(f"🚫 Quantidade {quantidade} é inferior ao mínimo permitido para {symbol} ({min_qty}). Ordem não enviada.")
             return
 
-        print(f"📦 Tentando enviar ordem:\n\n    ➤ Par: {symbol}\n    ➤ Direção: {lado}\n    ➤ Preço atual: {preco_atual}\n    ➤ Quantidade calculada: {quantidade}")
+        print(f"📦 Tentando enviar ordem:\n\n    ➔ Par: {symbol}\n    ➔ Direção: {lado}\n    ➔ Preço atual: {preco_atual}\n    ➔ Quantidade calculada: {quantidade}")
 
         if quantidade <= 0:
             print("🚫 Quantidade inválida! Ordem não enviada.")
@@ -227,5 +211,5 @@ def enviar_ordem(symbol, lado):
                 print(f"❌ Erro ao enviar ordem (tentativa {tentativas+1}): {e}")
                 time.sleep(2)
             tentativas += 1
-            
+
 
