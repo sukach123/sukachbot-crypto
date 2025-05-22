@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 
 load_dotenv()
 
+print("🚧 MODO DEMO ATIVO - Bybit Testnet em execução 🚧")
+
 # === Configurações ===
 symbols = ["BNBUSDT", "BTCUSDT", "DOGEUSDT", "SOLUSDT", "ADAUSDT", "ETHUSDT"]
 interval = "1"
@@ -17,7 +19,7 @@ api_key = os.getenv("BYBIT_API_KEY")
 api_secret = os.getenv("BYBIT_API_SECRET")
 quantidade_usdt = 5
 
-session = HTTP(api_key=api_key, api_secret=api_secret, testnet=False)
+session = HTTP(api_key=api_key, api_secret=api_secret, testnet=True)
 
 def fetch_candles(symbol, interval="1"):
     try:
@@ -233,4 +235,3 @@ while True:
             time.sleep(1)
     # Execução contínua sem atrasos
     time.sleep(1)
-
