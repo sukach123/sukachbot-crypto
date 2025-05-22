@@ -199,8 +199,8 @@ def enviar_ordem(symbol, lado):
                     qty=quantidade,
                     reduceOnly=False,
                     isIsolated=True,
-                    takeProfit=round(preco_atual * 1.015, 3),
-                    stopLoss=round(preco_atual * 0.997, 3)
+                    takeProfit=round(preco_atual * 0.985, 3) if lado == "Sell" else round(preco_atual * 1.015, 3),
+                    stopLoss=round(preco_atual * 1.003, 3) if lado == "Sell" else round(preco_atual * 0.997, 3)
                 )
                 print(f"🚀 Ordem {lado} executada com sucesso!")
                 return
