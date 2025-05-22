@@ -11,6 +11,12 @@ from datetime import datetime, timezone
 load_dotenv()
 
 print("🚧 MODO DEMO ATIVO - Bybit Testnet em execução 🚧")
+print("🔐 Verificando acesso à API...")
+try:
+    balance = session.get_wallet_balance(accountType="UNIFIED")
+    print("✅ API conectada com sucesso!")
+except Exception as e:
+    print(f"❌ Falha ao conectar à API: {e}")
 
 # === Configurações ===
 symbols = ["BNBUSDT", "BTCUSDT", "DOGEUSDT", "SOLUSDT", "ADAUSDT", "ETHUSDT"]
