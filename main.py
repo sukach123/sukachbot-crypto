@@ -248,3 +248,4 @@ while True:
             time.sleep(1)
     # Execução contínua sem atrasos
     time.sleep(1)
+
