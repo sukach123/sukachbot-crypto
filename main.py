@@ -165,7 +165,11 @@ def enviar_ordem(symbol, lado):
         # Verificar quantidade mínima permitida por símbolo
         min_qty_map = {
             "BTCUSDT": 0.001,
-            "ETHUSDT": 0.01
+            "ETHUSDT": 0.01,
+            "BNBUSDT": 0.1,
+            "DOGEUSDT": 10,
+            "SOLUSDT": 0.1,
+            "ADAUSDT": 1
         }
         min_qty = min_qty_map.get(symbol, 0.1)
 
