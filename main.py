@@ -11,14 +11,19 @@ from datetime import datetime, timezone
 load_dotenv()
 
 print("🚧 MODO DEMO ATIVO - Bybit Testnet em execução 🚧")
+
+
+# === Configurações ===
+api_key = os.getenv("BYBIT_API_KEY")
+api_secret = os.getenv("BYBIT_API_SECRET")
+session = HTTP(api_key=api_key, api_secret=api_secret, testnet=True)
+
 print("🔐 Verificando acesso à API...")
 try:
     balance = session.get_wallet_balance(accountType="UNIFIED")
     print("✅ API conectada com sucesso!")
 except Exception as e:
     print(f"❌ Falha ao conectar à API: {e}")
-
-# === Configurações ===
 symbols = ["BNBUSDT", "BTCUSDT", "DOGEUSDT", "SOLUSDT", "ADAUSDT", "ETHUSDT"]
 interval = "1"
 api_key = os.getenv("BYBIT_API_KEY")
