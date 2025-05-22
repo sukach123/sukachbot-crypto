@@ -80,8 +80,9 @@ def verificar_entrada(df):
 
     print(f"\n📊 Diagnóstico de sinais em {row['timestamp']}")
     print(f"✔️ Total: {sum(sinais_fortes)} fortes + {sum(sinais_extras)} extras = {total_confirmados}/9")
+    print(f"🔎 {row['timestamp']} | Apenas {total_confirmados}/9 sinais confirmados | Entrada bloqueada ❌")
 
-    if sum(sinais_fortes) >= 6 or (sum(sinais_fortes) == 5 and sum(sinais_extras) >= 2):
+    if sum(sinais_fortes) >= 5 or (sum(sinais_fortes) == 4 and sum(sinais_extras) >= 1):
         preco_atual = row["close"]
         diferenca_ema = abs(row["EMA10"] - row["EMA20"])
         limite_colisao = preco_atual * 0.0001
@@ -188,3 +189,4 @@ while True:
     tempo_execucao = time.time() - inicio
     if tempo_execucao < 1:
         time.sleep(1 - tempo_execucao)
+
