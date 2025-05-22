@@ -217,6 +217,14 @@ def enviar_ordem(symbol, lado):
                     takeProfit=round(preco_atual * 0.985, 3) if lado == "Sell" else round(preco_atual * 1.015, 3),
                     stopLoss=round(preco_atual * 1.003, 3) if lado == "Sell" else round(preco_atual * 0.997, 3)
                 )
+
+                if response.get("retCode") == 0:
+                    # Sucesso só é declarado acima com base no retCode
+                else:
+                    print(f"❌ Ordem falhou: {response.get('retMsg', 'Erro desconhecido')}")
+                return if lado == "Sell" else round(preco_atual * 1.015, 3),
+                    stopLoss=round(preco_atual * 1.003, 3) if lado == "Sell" else round(preco_atual * 0.997, 3)
+                )
                 print(f"🚀 Ordem {lado} executada com sucesso!")
                 return
             except Exception as e:
@@ -248,4 +256,5 @@ while True:
             time.sleep(1)
     # Execução contínua sem atrasos
     time.sleep(1)
+
 
