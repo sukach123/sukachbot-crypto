@@ -153,7 +153,7 @@ def verificar_entrada(df):
             direcao = "Buy" if row["EMA10"] > row["EMA20"] else "Sell"
             print(f"✅ Entrada confirmada! {direcao}")
             return direcao
-    elif sum(sinais_fortes) == 4 and sum(sinais_extras) >= 3:
+    elif sum(sinais_fortes) == 4 and sum(sinais_extras) >= 3: 
         print(f"🔔 ⚠️ ALERTA: 4 sinais fortes + 3 extras detectados (verificação manual sugerida)")
         return None
     else:
