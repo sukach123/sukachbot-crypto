@@ -50,73 +50,18 @@ def fetch_candles(symbol, interval="1"):
         time.sleep(1)
         return fetch_candles(symbol)
 
-def calcular_indicadores(df):
-    df["EMA10"] = df["close"].ewm(span=10).mean()
-    df["EMA20"] = df["close"].ewm(span=20).mean()
-    df["MACD"] = df["close"].ewm(span=12).mean() - df["close"].ewm(span=26).mean()
-    df["SINAL"] = df["MACD"].ewm(span=9).mean()
-    df["CCI"] = (df["close"] - df["close"].rolling(20).mean()) / (0.015 * df["close"].rolling(20).std())
-    df["ADX"] = abs(df["high"] - df["low"]).rolling(14).mean()
-    df["ATR"] = (df["high"] - df["low"]).rolling(14).mean()
-    df["volume_medio"] = df["volume"].rolling(20).mean()
-    df["volume_explosivo"] = df["volume"] > 1.3 * df["volume_medio"]
-    return df
-
-def verificar_entrada(df):
-    row = df.iloc[-1]
-    prev = df.iloc[-2]
-    ultimos5 = df.iloc[-5:]
-    ultimos20 = df.iloc[-20:]
-
-    corpo = abs(row["close"] - row["open"])
-    volatilidade = ultimos20["high"].max() - ultimos20["low"].min()
-    media_atr = ultimos20["ATR"].mean()
-    nao_lateral = volatilidade > (2 * media_atr)
-
-    sinal_1 = row["EMA10"] > row["EMA20"] or row["EMA10"] < row["EMA20"]
-    sinal_2 = row["MACD"] > row["SINAL"]
-    sinal_3 = row["CCI"] > 0
-    sinal_4 = row["ADX"] > 20
-    sinal_5 = nao_lateral
-
-    sinais_fortes = [sinal_1, sinal_2, sinal_3, sinal_4, sinal_5]
-
-    sinal_6 = row["volume_explosivo"]
-    sinal_7 = corpo > ultimos5["close"].max() - ultimos5["low"].min()
-    extra_1 = prev["close"] > prev["open"]
-    extra_2 = (row["high"] - row["close"]) < corpo
-    sinais_extras = [sinal_6, sinal_7, extra_1, extra_2]
-
-    total_confirmados = sum(sinais_fortes) + sum(sinais_extras)
-
-    print(f"\n📊 Diagnóstico de sinais em {row['timestamp']}")
-    print(f"✔️ Total: {sum(sinais_fortes)} fortes + {sum(sinais_extras)} extras = {total_confirmados}/9")
-
-    if sum(sinais_fortes) >= 5 or (sum(sinais_fortes) == 4 and sum(sinais_extras) >= 1):
-        preco_atual = row["close"]
-        diferenca_ema = abs(row["EMA10"] - row["EMA20"])
-        limite_colisao = preco_atual * 0.0001
-
-        print(f"🔔 Entrada validada com 6 sinais ou 5+2 extras!")
-
-        if diferenca_ema < limite_colisao:
-            print(f"🚫 Entrada bloqueada ❌ - Colisão de EMAs")
-            return None
-        else:
-            direcao = "Buy" if row["EMA10"] > row["EMA20"] else "Sell"
-            print(f"✅ Entrada confirmada! {direcao}")
-            return direcao
-    elif sum(sinais_fortes) == 4 and sum(sinais_extras) >= 3:
-        print(f"🔔 ⚠️ ALERTA: 4 sinais fortes + 3 extras detectados (verificação manual sugerida)")
-        return None
-    else:
-        print(f"🔎 Apenas {total_confirmados}/9 sinais confirmados | Entrada bloqueada ❌")
-        return None
+# ... (outras funções iguais)
 
 def enviar_ordem(symbol, lado):
     try:
+        try:
+            session.set_leverage(category="linear", symbol=symbol, buyLeverage=10, sellLeverage=10)
+        except Exception as e:
+            print(f"⚠️ Aviso: alavancagem não definida para {symbol}: {e}")
+
         dados_ticker = session.get_tickers(category="linear", symbol=symbol)
         preco_atual = float(dados_ticker['result']['list'][0]['lastPrice'])
+
         min_qty_map = {
             "BTCUSDT": 0.001,
             "ETHUSDT": 0.01,
@@ -133,11 +78,6 @@ def enviar_ordem(symbol, lado):
             return
 
         print(f"📦 Tentando enviar ordem:\n\n    ➤ Par: {symbol}\n    ➤ Direção: {lado}\n    ➤ Preço atual: {preco_atual}\n    ➤ Quantidade calculada: {quantidade}")
-
-        try:
-            session.set_leverage(category="linear", symbol=symbol, buyLeverage=10, sellLeverage=10)
-        except Exception as e:
-            print(f"⚠️ Aviso: não foi possível definir alavancagem para {symbol}: {e}")
 
         response = session.place_order(
             category="linear",
