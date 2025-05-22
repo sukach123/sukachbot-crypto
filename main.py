@@ -229,5 +229,3 @@ def enviar_ordem(symbol, lado):
             tentativas += 1
                 
 
-
-
