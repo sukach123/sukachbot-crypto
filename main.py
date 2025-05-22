@@ -134,7 +134,10 @@ def enviar_ordem(symbol, lado):
 
         print(f"📦 Tentando enviar ordem:\n\n    ➤ Par: {symbol}\n    ➤ Direção: {lado}\n    ➤ Preço atual: {preco_atual}\n    ➤ Quantidade calculada: {quantidade}")
 
-        session.set_leverage(category="linear", symbol=symbol, buyLeverage=10, sellLeverage=10)
+        try:
+            session.set_leverage(category="linear", symbol=symbol, buyLeverage=10, sellLeverage=10)
+        except Exception as e:
+            print(f"⚠️ Aviso: não foi possível definir alavancagem para {symbol}: {e}")
 
         response = session.place_order(
             category="linear",
@@ -155,21 +158,4 @@ def enviar_ordem(symbol, lado):
 
     except Exception as e:
         print(f"❌ Erro ao enviar ordem: {e}")
-
-# === LOOP PRINCIPAL DE EXECUÇÃO (a cada 1 segundo) ===
-print("🔁 Iniciando análise contínua de pares (a cada 1 segundo)...")
-
-while True:
-    for symbol in symbols:
-        print(f"\n🔍 Analisando par: {symbol}")
-        try:
-            df = fetch_candles(symbol)
-            df = calcular_indicadores(df)
-            direcao = verificar_entrada(df)
-            if direcao:
-                enviar_ordem(symbol, direcao)
-        except Exception as e:
-            print(f"⚠️ Erro ao processar {symbol}: {e}")
-    print("⏳ Aguardando próximo ciclo...")
-    time.sleep(1)
 
