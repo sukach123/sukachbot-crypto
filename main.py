@@ -22,6 +22,8 @@ print("🔐 Verificando acesso à API...")
 try:
     balance = session.get_wallet_balance(accountType="UNIFIED")
     print("✅ API conectada com sucesso!")
+    saldo_usdt = balance['result']['list'][0]['totalEquity']
+    print(f"💰 Saldo disponível (simulado): {saldo_usdt} USDT")
 except Exception as e:
     print(f"❌ Falha ao conectar à API: {e}")
 symbols = ["BNBUSDT", "BTCUSDT", "DOGEUSDT", "SOLUSDT", "ADAUSDT", "ETHUSDT"]
