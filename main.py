@@ -98,8 +98,8 @@ def enviar_ordem(symbol, lado):
             orderType="Market",
             qty=quantidade,
             reduceOnly=False,
-            isIsolated=True,
-            takeProfit=round(preco_atual * 1.015, 3) if lado == "Buy" else round(preco_atual * 0.985, 3),
+            isIsolated=False
+        ) if lado == "Buy" else round(preco_atual * 0.985, 3),
             stopLoss=round(preco_atual * 0.997, 3) if lado == "Buy" else round(preco_atual * 1.003, 3)
         )
 
