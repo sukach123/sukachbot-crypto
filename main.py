@@ -29,6 +29,7 @@ except Exception as e:
 symbols = ["BNBUSDT", "BTCUSDT", "DOGEUSDT", "SOLUSDT", "ADAUSDT", "ETHUSDT"]
 interval = "1"
 quantidade_usdt = 5
+pares_com_erro_leverage = ["ETHUSDT", "ADAUSDT", "BTCUSDT"]
 
 def fetch_candles(symbol, interval="1"):
     try:
@@ -64,10 +65,11 @@ def calcular_indicadores(df):
 
 def enviar_ordem(symbol, lado):
     try:
-        try:
-            session.set_leverage(category="linear", symbol=symbol, buyLeverage=10, sellLeverage=10)
-        except Exception as e:
-            print(f"⚠️ Aviso: alavancagem não definida para {symbol}: {e}")
+        if symbol not in pares_com_erro_leverage:
+            try:
+                session.set_leverage(category="linear", symbol=symbol, buyLeverage=10, sellLeverage=10)
+            except Exception as e:
+                print(f"⚠️ Aviso: alavancagem não definida para {symbol}: {e}")
 
         dados_ticker = session.get_tickers(category="linear", symbol=symbol)
         preco_atual = float(dados_ticker['result']['list'][0]['lastPrice'])
@@ -153,7 +155,7 @@ def verificar_entrada(df):
             direcao = "Buy" if row["EMA10"] > row["EMA20"] else "Sell"
             print(f"✅ Entrada confirmada! {direcao}")
             return direcao
-    elif sum(sinais_fortes) == 4 and sum(sinais_extras) >= 3: 
+    elif sum(sinais_fortes) == 4 and sum(sinais_extras) >= 3:
         print(f"🔔 ⚠️ ALERTA: 4 sinais fortes + 3 extras detectados (verificação manual sugerida)")
         return None
     else:
