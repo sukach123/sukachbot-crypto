@@ -99,7 +99,7 @@ def enviar_ordem(symbol, lado):
             qty=quantidade,
             reduceOnly=False,
             isIsolated=False,
-            takeProfit=round(preco_atual * 1.015, 3) if lado == "Buy" else round(preco_atual * 0.985, 3),
+            takeProfit=round(preco_atual + df["ATR"].iloc[-1], 3) if lado == "Buy" else round(preco_atual - df["ATR"].iloc[-1], 3),
             stopLoss=round(preco_atual - df["ATR"].iloc[-1], 3) if lado == "Buy" else round(preco_atual + df["ATR"].iloc[-1], 3)
         )
 
@@ -179,4 +179,3 @@ while True:
             print(f"⚠️ Erro ao processar {symbol}: {e}")
     print("⏳ Aguardando próximo ciclo...")
     time.sleep(1)
-
