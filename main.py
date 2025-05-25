@@ -177,4 +177,3 @@ while True:
             print(f"⚠️ Erro ao processar {symbol}: {e}")
     print("⏳ Aguardando próximo ciclo...")
     time.sleep(1)
-
