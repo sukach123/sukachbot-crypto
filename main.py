@@ -99,7 +99,6 @@ def enviar_ordem(symbol, lado):
             qty=quantidade,
             reduceOnly=False,
             isIsolated=False
-        ) if lado == "Buy" else round(preco_atual * 1.003, 3)
         )
 
         if response.get("retCode") == 0:
@@ -178,5 +177,4 @@ while True:
             print(f"⚠️ Erro ao processar {symbol}: {e}")
     print("⏳ Aguardando próximo ciclo...")
     time.sleep(1)
-
 
