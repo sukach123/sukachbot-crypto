@@ -105,8 +105,10 @@ def enviar_ordem(symbol, lado):
 
         if response.get("retCode") == 0:
             print(f"🚀 Ordem {lado} executada com sucesso!")
+            print("📋 Resposta da API:", response)
         else:
             print(f"❌ Ordem falhou: {response.get('retMsg', 'Erro desconhecido')}")
+            print("📋 Resposta da API:", response)
 
     except Exception as e:
         print(f"❌ Erro ao enviar ordem: {e}")
@@ -177,3 +179,4 @@ while True:
             print(f"⚠️ Erro ao processar {symbol}: {e}")
     print("⏳ Aguardando próximo ciclo...")
     time.sleep(1)
+
