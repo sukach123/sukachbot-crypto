@@ -99,7 +99,7 @@ def enviar_ordem(symbol, lado):
             qty=quantidade,
             reduceOnly=False,
             isIsolated=False,
-            takeProfit=round(preco_atual + df["ATR"].iloc[-1], 3) if lado == "Buy" else round(preco_atual - df["ATR"].iloc[-1], 3),
+            takeProfit=round(preco_atual + df["ATR"].iloc[-1] * 1.8, 3) if lado == "Buy" else round(preco_atual - df["ATR"].iloc[-1] * 1.8, 3),
             stopLoss=round(preco_atual - df["ATR"].iloc[-1], 3) if lado == "Buy" else round(preco_atual + df["ATR"].iloc[-1], 3)
         )
 
@@ -174,6 +174,11 @@ while True:
             df = calcular_indicadores(df)
             direcao = verificar_entrada(df)
             if direcao:
+                posicoes = session.get_positions(category="linear", symbol=symbol)
+                tem_posicao = any(float(p['size']) > 0 for p in posicoes['result']['list'])
+                if tem_posicao:
+                    print(f"⛔ Já há posição ativa em {symbol}, ignorando nova entrada.")
+                    continue
                 enviar_ordem(symbol, direcao)
         except Exception as e:
             print(f"⚠️ Erro ao processar {symbol}: {e}")
