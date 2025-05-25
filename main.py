@@ -175,12 +175,16 @@ while True:
             direcao = verificar_entrada(df)
             if direcao:
                 posicoes = session.get_positions(category="linear", symbol=symbol)
-                tem_posicao = any(float(p['size']) > 0 for p in posicoes['result']['list'])
+                tem_posicao = any(float(p['size']) > 0 and p['side'] == direcao for p in posicoes['result']['list'])
                 if tem_posicao:
-                    print(f"⛔ Já há posição ativa em {symbol}, ignorando nova entrada.")
-                    continue
+                    if sum(sinais_fortes) >= 5 and sum(sinais_extras) >= 3:
+                        print(f"⚠️ Forçando nova entrada em {symbol} mesmo com posição ativa (5+3 sinais)")
+                    else:
+                        print(f"⛔ Já há posição ativa em {symbol}, ignorando nova entrada.")
+                        continue
                 enviar_ordem(symbol, direcao)
         except Exception as e:
             print(f"⚠️ Erro ao processar {symbol}: {e}")
     print("⏳ Aguardando próximo ciclo...")
     time.sleep(1)
+
