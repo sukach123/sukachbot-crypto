@@ -19,15 +19,16 @@ print("🔐 Verificando acesso à API...")
 try:
     balance = session.get_wallet_balance(accountType="UNIFIED")
     print("✅ API conectada com sucesso!")
-    saldo_usdt = balance['result']['list'][0]['totalEquity']
+    saldo_usdt = float(balance['result']['list'][0]['totalEquity'])
     print(f"💰 Saldo disponível (simulado): {saldo_usdt} USDT")
 except Exception as e:
     print(f"❌ Falha ao conectar à API: {e}")
+    saldo_usdt = 0
 
 symbols = ["BNBUSDT", "BTCUSDT", "DOGEUSDT", "SOLUSDT", "ADAUSDT", "ETHUSDT"]
 interval = "1"
-quantidade_usdt = 5
-pares_com_erro_leverage = ["ETHUSDT", "ADAUSDT", "BTCUSDT"]
+quantidade_usdt = 5  # quantidade fixa por ordem (pode adaptar)
+pares_com_erro_leverage = ["ETHUSDT", "ADAUSDT", "BTCUSDT"]  # Exemplo, ajustar se precisar
 
 def fetch_candles(symbol, interval="1"):
     try:
@@ -40,7 +41,7 @@ def fetch_candles(symbol, interval="1"):
     except Exception as e:
         print(f"🚨 Erro ao buscar candles de {symbol}: {e}")
         time.sleep(1)
-        return fetch_candles(symbol)
+        return fetch_candles(symbol, interval)
 
 def calcular_adx(df, n=14):
     high = df['high']
@@ -48,22 +49,22 @@ def calcular_adx(df, n=14):
     close = df['close']
 
     plus_dm = high.diff()
-    minus_dm = low.diff()
+    minus_dm = low.diff() * -1
 
-    plus_dm = plus_dm.where((plus_dm > minus_dm) & (plus_dm > 0), 0)
-    minus_dm = minus_dm.where((minus_dm > plus_dm) & (minus_dm > 0), 0)
+    plus_dm[plus_dm < 0] = 0
+    minus_dm[minus_dm < 0] = 0
 
-    tr1 = high - low
-    tr2 = (high - close.shift()).abs()
-    tr3 = (low - close.shift()).abs()
+    tr1 = pd.Series(high - low)
+    tr2 = pd.Series(abs(high - close.shift()))
+    tr3 = pd.Series(abs(low - close.shift()))
     tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-
     atr = tr.rolling(window=n).mean()
 
-    plus_di = 100 * (plus_dm.rolling(window=n).mean() / atr)
-    minus_di = 100 * (minus_dm.rolling(window=n).mean() / atr)
+    plus_di = 100 * (plus_dm.rolling(n).mean() / atr)
+    minus_di = 100 * (minus_dm.rolling(n).mean() / atr)
+
     dx = (abs(plus_di - minus_di) / (plus_di + minus_di)) * 100
-    adx = dx.rolling(window=n).mean()
+    adx = dx.rolling(n).mean()
 
     return adx
 
@@ -78,59 +79,60 @@ def calcular_indicadores(df):
     return df
 
 def sinais(df):
+    # Simples regra exemplo para sinal LONG ou SHORT, pode adaptar conforme estratégia
     fortes = 0
     extras = 0
+    entrada = "NENHUMA"
 
-    linha = df.iloc[-1]
-
-    # Exemplo simples de condições para sinais
-    if linha["EMA10"] > linha["EMA20"]:
+    if df["EMA10"].iloc[-1] > df["EMA20"].iloc[-1]:
         fortes += 1
-    if linha["MACD"] > linha["SINAL"]:
+    if df["MACD"].iloc[-1] > df["SINAL"].iloc[-1]:
         fortes += 1
-    if linha["CCI"] > 100:
-        fortes += 1
-    if linha["ADX"] > 20:
-        fortes += 1
-    if linha["volume_explosivo"]:
+    if df["CCI"].iloc[-1] > 100:
+        extras += 1
+    if df["ADX"].iloc[-1] > 20:
         extras += 1
 
-    # Exemplo de decisão simples para entrada LONG ou SHORT
-    entrada = "NENHUMA"
-    if fortes >= 4:
+    # Decidir entrada baseado em indicadores
+    if fortes >= 2 and extras >= 1:
         entrada = "LONG"
-    elif fortes <= 1:
+    elif fortes == 0 and extras == 0:
         entrada = "SHORT"
 
     return fortes, extras, entrada
 
+def enviar_ordem(symbol, lado, quantidade):
+    try:
+        resposta = session.place_active_order_v2(
+            symbol=symbol,
+            side="Buy" if lado == "LONG" else "Sell",
+            orderType="Market",
+            qty=quantidade,
+            timeInForce="GoodTillCancel",
+            reduceOnly=False,
+            closeOnTrigger=False
+        )
+        print(f"💡 Ordem enviada para {symbol}: {lado}")
+        return resposta
+    except Exception as e:
+        print(f"❌ Erro ao enviar pedido para {symbol}: {e}")
+
 def main():
-    for symbol in symbols:
-        print(f"🔍 Analisando {symbol}")
-        df = fetch_candles(symbol, interval)
-        df = calcular_indicadores(df)
+    while True:
+        for simbolo in symbols:
+            df = fetch_candles(simbolo, interval)
+            df = calcular_indicadores(df)
+            fortes, extras, entrada_sugerida = sinais(df)
 
-        fortes, extras, entrada = sinais(df)
+            print(f"🔍 Analisando {simbolo}")
+            print(f"Sinais fortes: {fortes}, extras: {extras}, entrada sugerida: {entrada_sugerida}")
 
-        print(f"Sinais fortes: {fortes}, extras: {extras}, entrada sugerida: {entrada}")
+            if entrada_sugerida in ["LONG", "SHORT"]:
+                enviar_ordem(simbolo, entrada_sugerida, quantidade_usdt)
+            else:
+                print("Nenhuma entrada válida no momento.")
 
-        if entrada != "NENHUMA":
-            print(f"💡 Enviando ordem para {symbol}: {entrada}")
-            # Aqui deve vir a lógica para envio de ordens com session.place_active_order
-            # Exemplo fictício:
-            try:
-                ordem = session.place_active_order(
-                    symbol=symbol,
-                    side="Buy" if entrada == "LONG" else "Sell",
-                    orderType="Market",
-                    qty=quantidade_usdt,
-                    timeInForce="GoodTillCancel"
-                )
-                print("✅ Ordem enviada com sucesso!")
-            except Exception as e:
-                print(f"❌ Erro ao enviar ordem para {symbol}: {e}")
-
-        time.sleep(1)  # Para não bombardear a API
+            time.sleep(1)  # delay entre pares para não sobrecarregar API
 
 if __name__ == "__main__":
     main()
