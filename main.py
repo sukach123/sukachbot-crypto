@@ -10,128 +10,200 @@ from datetime import datetime, timezone
 
 load_dotenv()
 
-print("🚧 MODO DEMO ATIVO - Bybit Testnet em execução 🚧")
+# === Configurações ===
+symbols = ["BNBUSDT", "BTCUSDT", "DOGEUSDT", "SOLUSDT", "ADAUSDT", "ETHUSDT"]
+interval = "1"
+api_key = os.getenv("BYBIT_API_KEY")
+api_secret = os.getenv("BYBIT_API_SECRET")
+quantidade_usdt = 5
 
-session = HTTP(
-    testnet=True,
-    api_key=os.getenv("API_KEY"),
-    api_secret=os.getenv("API_SECRET")
-)
+session = HTTP(api_key=api_key, api_secret=api_secret, testnet=False)
 
-ativos = ["BTCUSDT", "ETHUSDT", "BNBUSDT", "ADAUSDT", "SOLUSDT", "DOGEUSDT"]
-INTERVALO = 1  # minuto
-VELAS = 1000
-
-def obter_dados(simbolo):
+def fetch_candles(symbol, interval="1"):
     try:
-        resposta = session.get_kline(
-            category="linear",
-            symbol=simbolo,
-            interval=str(INTERVALO),
-            limit=VELAS
-        )
-        dados = resposta['result']['list']
-        df = pd.DataFrame(dados, columns=[
-            'timestamp', 'open', 'high', 'low', 'close', 'volume', 'turnover'
-        ])
-        df = df.astype(float)
-        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+        data = session.get_kline(category="linear", symbol=symbol, interval=interval, limit=200)
+        candles = data['result']['list']
+        df = pd.DataFrame(candles, columns=["timestamp", "open", "high", "low", "close", "volume", "turnover"])
+        df = df.astype({"open": float, "high": float, "low": float, "close": float, "volume": float})
+        df["timestamp"] = pd.to_datetime(pd.to_numeric(df["timestamp"]), unit="ms", utc=True)
+
+        # Verificar se candle está atrasado
+        now = datetime.now(timezone.utc)
+        diff = now - df["timestamp"].iloc[-1]
+        atraso = int(diff.total_seconds())
+        if 60 < atraso < 300:
+            print(f"⚠️ AVISO: Último candle de {symbol} está atrasado {atraso} segundos!")
+
         return df
     except Exception as e:
-        print(f"Erro ao obter velas de {simbolo}: {e}")
-        return None
+        print(f"🚨 Erro ao buscar candles de {symbol}: {e}")
+        time.sleep(1)
+        return fetch_candles(symbol)
 
 def calcular_indicadores(df):
-    df["EMA10"] = df["close"].ewm(span=10, adjust=False).mean()
-    df["EMA20"] = df["close"].ewm(span=20, adjust=False).mean()
+    df["EMA10"] = df["close"].ewm(span=10).mean()
+    df["EMA20"] = df["close"].ewm(span=20).mean()
     df["MACD"] = df["close"].ewm(span=12).mean() - df["close"].ewm(span=26).mean()
     df["SINAL"] = df["MACD"].ewm(span=9).mean()
     df["CCI"] = (df["close"] - df["close"].rolling(20).mean()) / (0.015 * df["close"].rolling(20).std())
     df["ADX"] = abs(df["high"] - df["low"]).rolling(14).mean()
-    df["RSI"] = 100 - (100 / (1 + df["close"].diff().clip(lower=0).rolling(14).mean() /
-                              -df["close"].diff().clip(upper=0).rolling(14).mean()))
-    df["STOCHK"] = ((df["close"] - df["low"].rolling(14).min()) /
-                    (df["high"].rolling(14).max() - df["low"].rolling(14).min())) * 100
-    df["STOCHD"] = df["STOCHK"].rolling(3).mean()
+    df["ATR"] = (df["high"] - df["low"]).rolling(14).mean()
+    df["volume_medio"] = df["volume"].rolling(20).mean()
+    df["volume_explosivo"] = df["volume"] > 1.3 * df["volume_medio"]
     return df
 
-def sinais(df):
-    ult = df.iloc[-1]
+def verificar_entrada(df):
+    row = df.iloc[-1]
+    prev = df.iloc[-2]
+    ultimos5 = df.iloc[-5:]
+    ultimos20 = df.iloc[-20:]
+
+    corpo = abs(row["close"] - row["open"])
+    volatilidade = ultimos20["high"].max() - ultimos20["low"].min()
+    media_atr = ultimos20["ATR"].mean()
+    nao_lateral = volatilidade > (2 * media_atr)
+
+    sinal_1 = row["EMA10"] > row["EMA20"] or row["EMA10"] < row["EMA20"]
+    sinal_2 = row["MACD"] > row["SINAL"]
+    sinal_3 = row["CCI"] > 0
+    sinal_4 = row["ADX"] > 20
+    sinal_5 = row["volume_explosivo"]
+    sinal_6 = corpo > ultimos5["close"].max() - ultimos5["low"].min()
+    sinal_7 = nao_lateral
+
     sinais_fortes = [
-        ult["EMA10"] > ult["EMA20"],
-        ult["MACD"] > ult["SINAL"],
-        ult["CCI"] > 0,
-        ult["ADX"] > 20,
-        ult["RSI"] > 50
+        sinal_1,  # EMA10 vs EMA20
+        sinal_2,  # MACD > SINAL
+        sinal_3,  # CCI > 0
+        sinal_4,  # ADX > 20
+        sinal_7   # Não lateral
     ]
+
+    extra_1 = prev["close"] > prev["open"]
+    extra_2 = (row["high"] - row["close"]) < corpo
     sinais_extras = [
-        ult["STOCHK"] > ult["STOCHD"],
-        ult["EMA10"] > df["EMA10"].shift(1).iloc[-1],
-        ult["close"] > ult["EMA10"],
-        ult["STOCHK"] > 50
+        sinal_5,  # volume_explosivo
+        sinal_6,  # corpo_grande
+        extra_1,  # vela anterior de alta
+        extra_2   # pavio pequeno
     ]
-    return sinais_fortes.count(True), sinais_extras.count(True)
 
-def calcular_quantidade(symbol, usdt=20):
-    try:
-        preco = float(obter_dados(symbol)['close'].iloc[-1])
-        return round(usdt / preco, 8)
-    except:
-        return 0
+    total_confirmados = sum(sinais_fortes) + sum(sinais_extras)
 
-def enviar_ordem(simbolo, lado, quantidade, preco):
-    try:
-        tp = round(preco * 1.015, 4)
-        sl = round(preco * 0.997, 4)
-        print(f"🟢 Enviando ordem {lado} para {simbolo} - Qtd: {quantidade}")
-        print(f"   Preço entrada: {preco}, TP: {tp}, SL: {sl}")
-        session.place_order(
-            category="linear",
-            symbol=simbolo,
-            side=lado,
-            order_type="Market",
-            qty=quantidade,
-            take_profit=tp,
-            stop_loss=sl,
-            time_in_force="GoodTillCancel"
-        )
-    except Exception as e:
-        print(f"❌ Erro ao enviar ordem para {simbolo}: {e}")
+    print(f"\n📊 Diagnóstico de sinais em {row['timestamp']}")
+    print(f"📌 EMA10 vs EMA20: {sinal_1}")
+    print(f"📌 MACD > SINAL: {sinal_2}")
+    print(f"📌 CCI > 0: {sinal_3} (valor: {row['CCI']:.2f})")
+    print(f"📌 ADX > 20: {sinal_4} (valor: {row['ADX']:.2f})")
+    print(f"📌 Volume explosivo: {sinal_5} (volume: {row['volume']:.2f})")
+    print(f"📌 Corpo grande: {sinal_6}")
+    print(f"📌 Não lateral: {sinal_7}")
+    print(f"📌 Extra: Vela anterior de alta: {extra_1}")
+    print(f"📌 Extra: Pequeno pavio superior: {extra_2}")
+    print(f"✔️ Total: {sum(sinais_fortes)} fortes + {sum(sinais_extras)} extras = {total_confirmados}/9")
 
-def analisar(simbolo):
-    print(f"\n🔍 Analisando {simbolo}")
-    df = obter_dados(simbolo)
-    if df is None or len(df) < 50:
-        print(f"❌ Dados insuficientes para {simbolo}")
-        return
-    print("🧮 Calculando indicadores...")
-    df = calcular_indicadores(df)
-    fortes, extras = sinais(df)
-    print(f"Sinais fortes: {fortes}, extras: {extras}", end='')
+    if sum(sinais_fortes) >= 6 or (sum(sinais_fortes) == 5 and sum(sinais_extras) >= 2):
+        preco_atual = row["close"]
+        diferenca_ema = abs(row["EMA10"] - row["EMA20"])
+        limite_colisao = preco_atual * 0.0001
 
-    if fortes >= 6 or (fortes >= 5 and extras >= 2):
-        lado = "Buy"
-    elif fortes <= 1 and extras <= 2:
-        lado = "Sell"
+        print(f"🔔 {row['timestamp']} | Entrada validada com 6 sinais ou 5+2 extras!")
+
+        if diferenca_ema < limite_colisao:
+            print(f"🚫 Entrada bloqueada ❌")
+            return None
+        else:
+            direcao = "Buy" if row["EMA10"] > row["EMA20"] else "Sell"
+            print(f"✅ Entrada confirmada! {direcao}")
+            return direcao
     else:
-        print(", entrada sugerida: NENHUMA\nNenhuma entrada válida no momento.")
-        return
+        print(f"🔎 {row['timestamp']} | Apenas {total_confirmados}/9 sinais confirmados | Entrada bloqueada ❌")
+        return None
 
-    preco_entrada = float(df["close"].iloc[-1])
-    quantidade = calcular_quantidade(simbolo)
-    enviar_ordem(simbolo, lado, quantidade, preco_entrada)
+def colocar_sl_tp(symbol, lado, preco_entrada, quantidade):
+    preco_sl = preco_entrada * 0.997  # SL de -0.3%
+    preco_tp = preco_entrada * 1.015  # TP de +1.5%
 
-def principal():
-    while True:
-        for simbolo in ativos:
-            analisar(simbolo)
+    for tentativa in range(5):
+        try:
+            session.place_order(
+                category="linear",
+                symbol=symbol,
+                side="Sell" if lado == "Buy" else "Buy",
+                orderType="Stop",
+                qty=quantidade,
+                price=round(preco_sl, 3),
+                triggerPrice=round(preco_sl, 3),
+                triggerBy="LastPrice",
+                reduceOnly=True,
+                isIsolated=True
+            )
+            session.place_order(
+                category="linear",
+                symbol=symbol,
+                side="Sell" if lado == "Buy" else "Buy",
+                orderType="Limit",
+                qty=quantidade,
+                price=round(preco_tp, 3),
+                reduceOnly=True,
+                isIsolated=True
+            )
+            print(f"🎯 SL e TP colocados com sucesso!")
+            return
+        except Exception as e:
+            print(f"⚠️ Erro ao colocar SL/TP (tentativa {tentativa+1}): {e}")
+            time.sleep(2)
+
+def enviar_ordem(symbol, lado):
+    try:
+        dados_ticker = session.get_tickers(category="linear", symbol=symbol)
+        preco_atual = float(dados_ticker['result']['list'][0]['lastPrice'])
+        quantidade = round(quantidade_usdt / preco_atual, 3)
+
+        print(f"📦 Tentando enviar ordem:")
+        print(f"    ➤ Par: {symbol}")
+        print(f"    ➤ Direção: {lado}")
+        print(f"    ➤ Preço atual: {preco_atual}")
+        print(f"    ➤ Quantidade calculada: {quantidade}")
+
+        if quantidade <= 0:
+            print("🚫 Quantidade inválida! Ordem não enviada.")
+            return
+
+        session.set_leverage(category="linear", symbol=symbol, buyLeverage=10, sellLeverage=10)
+
+        response = session.place_order(
+            category="linear",
+            symbol=symbol,
+            side=lado,
+            orderType="Market",
+            qty=quantidade,
+            reduceOnly=False,
+            isIsolated=True
+        )
+
+        print(f"🚀 Ordem {lado} executada com sucesso!")
+        colocar_sl_tp(symbol, lado, preco_atual, quantidade)
+
+    except Exception as e:
+        print(f"🚨 Erro ao enviar ordem: {e}")
         time.sleep(1)
 
-if __name__ == "__main__":
-    try:
-        print("🔐 Verificando acesso à API...")
-        saldo = session.get_wallet_balance(accountType="UNIFIED")['result']['list'][0]['totalEquity']
-        print(f"✅ API conectada com sucesso!\n💰 Saldo disponível (simulado): {saldo} USDT")
-        principal()
-    except Exception as e:
-        print(f"Erro crítico: {e}")
+# === Loop Principal ===
+while True:
+    inicio = time.time()
+    for symbol in symbols:
+        try:
+            df = fetch_candles(symbol)
+            df = calcular_indicadores(df)
+            direcao = verificar_entrada(df)
+            if direcao:
+                enviar_ordem(symbol, direcao)
+            else:
+                print(f"🔹 {symbol} sem entrada confirmada...")
+        except Exception as e:
+            print(f"🚨 Erro geral no processamento de {symbol}: {e}")
+            time.sleep(1)
+    tempo_execucao = time.time() - inicio
+    if tempo_execucao < 1:
+        time.sleep(1 - tempo_execucao)
