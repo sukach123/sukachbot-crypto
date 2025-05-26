@@ -1,142 +1,151 @@
-# === SukachBot PRO75 v1.4 - Entrada com 5 fortes ou 4+2 extras ===
+# === SukachBot PRO75 - Análise por segundo com TP/SL e checagem de velas ===
 
+import time
 import pandas as pd
 import numpy as np
-import time
 from datetime import datetime, timezone
 from pybit.unified_trading import HTTP
 
-# === Configuração da API ===
+# Configurações de API
 api_key = "SUA_API_KEY"
 api_secret = "SEU_API_SECRET"
 
 session = HTTP(
     testnet=True,
     api_key=api_key,
-    api_secret=api_secret
+    api_secret=api_secret,
 )
 
-# === Função: Buscar velas ===
-def buscar_candles(symbol="DOGEUSDT", interval="1", limit=100):
+symbols = ["DOGEUSDT", "SOLUSDT", "ADAUSDT", "ETHUSDT", "BNBUSDT"]
+
+def buscar_velas(symbol, interval="1", limit=1000):
     try:
-        res = session.get_kline(
+        response = session.get_kline(
             category="linear",
             symbol=symbol,
             interval=interval,
-            limit=limit
+            limit=limit,
         )
-        df = pd.DataFrame(res['result']['list'])
-        df.columns = ['timestamp', 'open', 'high', 'low', 'close', 'volume', 'turnover']
+        df = pd.DataFrame(response["result"]["list"], columns=[
+            "timestamp", "open", "high", "low", "close", "volume", "turnover"
+        ])
         df = df.astype(float)
-        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms', utc=True)
-        df.set_index('timestamp', inplace=True)
+        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
+        df.set_index("timestamp", inplace=True)
         return df
     except Exception as e:
-        print(f"❌ Erro ao buscar velas de {symbol}: {e}")
+        print(f"Erro ao buscar velas de {symbol}: {e}")
         return None
 
-# === Função: Indicadores Técnicos ===
 def calcular_indicadores(df):
-    df['EMA10'] = df['close'].ewm(span=10).mean()
-    df['EMA20'] = df['close'].ewm(span=20).mean()
-
-    df['MACD'] = df['close'].ewm(span=12).mean() - df['close'].ewm(span=26).mean()
-    df['SINAL'] = df['MACD'].ewm(span=9).mean()
-
-    df['CCI'] = (df['close'] - df['close'].rolling(20).mean()) / (0.015 * df['close'].rolling(20).std())
-
-    high = df['high']
-    low = df['low']
-    close = df['close']
-
-    tr1 = high - low
-    tr2 = abs(high - close.shift(1))
-    tr3 = abs(low - close.shift(1))
-    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-
-    atr = tr.rolling(14).mean()
-    df['ATR'] = atr
-    df['ADX'] = 100 * (atr / close.rolling(14).mean())
+    df["EMA10"] = df["close"].ewm(span=10).mean()
+    df["EMA20"] = df["close"].ewm(span=20).mean()
+    df["MACD"] = df["close"].ewm(12).mean() - df["close"].ewm(26).mean()
+    df["SINAL"] = df["MACD"].ewm(9).mean()
+    df["CCI"] = (df["close"] - df["close"].rolling(20).mean()) / (0.015 * df["close"].rolling(20).std())
+    df["ADX"] = calcular_adx(df)
+    df["ATR"] = calcular_atr(df)
     return df
 
-# === Função: Estratégia de Entrada ===
-def verificar_sinais(df):
-    row = df.iloc[-1]
+def calcular_adx(df, period=14):
+    high = df["high"]
+    low = df["low"]
+    close = df["close"]
+
+    plus_dm = high.diff()
+    minus_dm = low.diff()
+    tr = pd.concat([
+        high - low,
+        abs(high - close.shift()),
+        abs(low - close.shift())
+    ], axis=1).max(axis=1)
+
+    atr = tr.rolling(period).mean()
+    plus_di = 100 * (plus_dm.rolling(period).mean() / atr)
+    minus_di = 100 * (minus_dm.rolling(period).mean() / atr)
+    dx = (abs(plus_di - minus_di) / (plus_di + minus_di)) * 100
+    adx = dx.rolling(period).mean()
+    return adx
+
+def calcular_atr(df, period=14):
+    tr = pd.concat([
+        df["high"] - df["low"],
+        abs(df["high"] - df["close"].shift()),
+        abs(df["low"] - df["close"].shift())
+    ], axis=1).max(axis=1)
+    atr = tr.rolling(period).mean()
+    return atr
+
+def gerar_sinais(row):
     sinais_fortes = 0
     sinais_extras = 0
 
-    # Fortes
-    if row["EMA10"] > row["EMA20"]: sinais_fortes += 1
-    if row["MACD"] > row["SINAL"]: sinais_fortes += 1
-    if row["CCI"] > 100: sinais_fortes += 1
-    if row["ADX"] > 20: sinais_fortes += 1
-    if row["close"] > row["EMA10"]: sinais_fortes += 1
+    if row["EMA10"] > row["EMA20"]:
+        sinais_fortes += 1
+    if row["MACD"] > row["SINAL"]:
+        sinais_fortes += 1
+    if row["CCI"] > 100:
+        sinais_fortes += 1
+    if row["ADX"] > 20:
+        sinais_fortes += 1
+    if row["close"] > row["EMA10"]:
+        sinais_fortes += 1
 
-    # Extras
-    if row["close"] > row["close"] - row["ATR"]: sinais_extras += 1
-    if row["EMA10"] > row["EMA10"].shift(1): sinais_extras += 1
-    if row["volume"] > df['volume'].rolling(10).mean().iloc[-1]: sinais_extras += 1
-    if row["CCI"] > 0: sinais_extras += 1
+    if row["EMA10"] > row["EMA20"] and row["CCI"] > 100:
+        sinais_extras += 1
+    if row["MACD"] > row["SINAL"] and row["ADX"] > 20:
+        sinais_extras += 1
 
     return sinais_fortes, sinais_extras
 
-# === Função: Enviar Ordem ===
-def enviar_ordem(symbol, direcao, quantidade):
+def enviar_ordem(symbol, side, qty, price, sl_percent=1.0, tp_percent=1.5):
     try:
-        preco_entrada = float(session.get_ticker(category="linear", symbol=symbol)['result']['list'][0]['lastPrice'])
+        sl_price = price * (1 - sl_percent / 100) if side == "Buy" else price * (1 + sl_percent / 100)
+        tp_price = price * (1 + tp_percent / 100) if side == "Buy" else price * (1 - tp_percent / 100)
 
-        if direcao == "LONG":
-            tp = round(preco_entrada * 1.015, 4)
-            sl = round(preco_entrada * 0.99, 4)
-            lado = "Buy"
-        else:
-            tp = round(preco_entrada * 0.985, 4)
-            sl = round(preco_entrada * 1.01, 4)
-            lado = "Sell"
-
-        res = session.place_order(
+        response = session.place_order(
             category="linear",
             symbol=symbol,
-            side=lado,
-            orderType="Market",
-            qty=quantidade,
-            takeProfit=str(tp),
-            stopLoss=str(sl),
-            timeInForce="GoodTillCancel"
+            side=side,
+            order_type="Market",
+            qty=qty,
+            take_profit=round(tp_price, 4),
+            stop_loss=round(sl_price, 4),
+            time_in_force="GoodTillCancel",
         )
-        print(f"✅ Ordem {direcao} enviada para {symbol} - Qtd: {quantidade}")
+        print(f"🟢 Ordem enviada: {side} {symbol} - Qtd: {qty}")
     except Exception as e:
         print(f"❌ Erro ao enviar ordem para {symbol}: {e}")
 
-# === LOOP PRINCIPAL ===
-ativos = ["DOGEUSDT", "ADAUSDT", "SOLUSDT"]
+def principal():
+    while True:
+        for symbol in symbols:
+            df = buscar_velas(symbol)
+            if df is None or len(df) < 50:
+                continue
 
-while True:
-    for ativo in ativos:
-        df = buscar_candles(ativo)
-        if df is None or len(df) < 20:
-            continue
+            df = calcular_indicadores(df)
+            ultima = df.iloc[-1]
 
-        tempo_ultima_vela = df.index[-1]
-        agora = datetime.now(timezone.utc)
+            # Verifica se candle é atual (máx 2s de atraso)
+            agora = datetime.now(timezone.utc)
+            atraso = (agora - ultima.name).total_seconds()
+            if atraso > 2:
+                continue  # Pula esse símbolo se a vela estiver atrasada
 
-        diff = (agora - tempo_ultima_vela).total_seconds()
-        if diff > 2:
-            continue  # ignora se a vela não está atualizada
+            fortes, extras = gerar_sinais(ultima)
+            print(f"\n🔍 Analisando {symbol}")
+            print(f"Sinais fortes: {fortes}, extras: {extras}", end="")
 
-        df = calcular_indicadores(df)
-        fortes, extras = verificar_sinais(df)
+            if fortes >= 6 or (fortes == 5 and extras >= 2):
+                side = "Buy"
+                price = ultima["close"]
+                enviar_ordem(symbol, side, qty=0.02, price=price)
+            else:
+                print(" | Nenhuma entrada válida.")
 
-        print(f"\n🔍 Analisando {ativo}")
-        print(f"Sinais fortes: {fortes}, extras: {extras}", end='')
+        time.sleep(1)
 
-        if fortes >= 5 or (fortes >= 4 and extras >= 2):
-            direcao = "LONG" if df["EMA10"].iloc[-1] > df["EMA20"].iloc[-1] else "SHORT"
-            print(f", entrada sugerida: {direcao}")
-            enviar_ordem(ativo, direcao, 0.02)
-        else:
-            print(", entrada sugerida: NENHUMA")
-
-    time.sleep(1)
-
+if __name__ == "__main__":
+    principal()
 
