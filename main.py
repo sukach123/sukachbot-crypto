@@ -1,5 +1,3 @@
-# === SukachBot PRO75 - Agora com TP de 1.5% automático e SL de -0.3% ===
-
 import pandas as pd
 import numpy as np
 from pybit.unified_trading import HTTP
@@ -38,6 +36,7 @@ def fetch_candles(symbol, interval="1"):
         df = pd.DataFrame(candles, columns=["timestamp", "open", "high", "low", "close", "volume", "turnover"])
         df = df.astype({"open": float, "high": float, "low": float, "close": float, "volume": float})
         df["timestamp"] = pd.to_datetime(pd.to_numeric(df["timestamp"]), unit="ms", utc=True)
+        # Sem alerta de atraso de vela
         return df
     except Exception as e:
         print(f"🚨 Erro ao buscar candles de {symbol}: {e}")
@@ -50,35 +49,28 @@ def calcular_indicadores(df):
     df["MACD"] = df["close"].ewm(span=12).mean() - df["close"].ewm(span=26).mean()
     df["SINAL"] = df["MACD"].ewm(span=9).mean()
     df["CCI"] = (df["close"] - df["close"].rolling(20).mean()) / (0.015 * df["close"].rolling(20).std())
-    df["ADX"] = adx_indicator(df)
-    # Volume explosivo: volume do candle atual > média dos últimos 20 candles * 1.5
-    df["volume_explosivo"] = df["volume"] > (df["volume"].rolling(20).mean() * 1.5)
+    df["ADX"] = calcular_adx(df)
+    df["volume_explosivo"] = df["volume"] > df["volume"].rolling(20).mean() * 1.5
+    # Aqui você pode incluir outros indicadores necessários
     return df
 
-def adx_indicator(df, n=14):
-    # Calcula ADX básico
-    high = df["high"]
-    low = df["low"]
-    close = df["close"]
-
-    plus_dm = high.diff()
-    minus_dm = low.diff().abs()
-
-    plus_dm = np.where((plus_dm > minus_dm) & (plus_dm > 0), plus_dm, 0)
-    minus_dm = np.where((minus_dm > plus_dm) & (minus_dm > 0), minus_dm, 0)
-
-    tr = pd.concat([
-        high - low,
-        (high - close.shift()).abs(),
-        (low - close.shift()).abs()
-    ], axis=1).max(axis=1)
-
-    atr = tr.rolling(n).mean()
-
-    plus_di = 100 * (pd.Series(plus_dm).rolling(n).sum() / atr)
-    minus_di = 100 * (pd.Series(minus_dm).rolling(n).sum() / atr)
-
-    dx = (abs(plus_di - minus_di) / (plus_di + minus_di)) * 100
+def calcular_adx(df, n=14):
+    # Cálculo simplificado do ADX, para exemplo
+    df['TR'] = np.maximum.reduce([
+        df['high'] - df['low'],
+        abs(df['high'] - df['close'].shift()),
+        abs(df['low'] - df['close'].shift())
+    ])
+    df['plus_dm'] = np.where((df['high'] - df['high'].shift()) > (df['low'].shift() - df['low']), 
+                              np.maximum(df['high'] - df['high'].shift(), 0), 0)
+    df['minus_dm'] = np.where((df['low'].shift() - df['low']) > (df['high'] - df['high'].shift()), 
+                              np.maximum(df['low'].shift() - df['low'], 0), 0)
+    tr_smooth = df['TR'].rolling(n).sum()
+    plus_dm_smooth = df['plus_dm'].rolling(n).sum()
+    minus_dm_smooth = df['minus_dm'].rolling(n).sum()
+    plus_di = 100 * plus_dm_smooth / tr_smooth
+    minus_di = 100 * minus_dm_smooth / tr_smooth
+    dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di)
     adx = dx.rolling(n).mean()
     return adx
 
@@ -86,100 +78,83 @@ def sinais(df):
     row = df.iloc[-1]
     prev = df.iloc[-2]
     ultimos5 = df.iloc[-6:-1]
-
     corpo = abs(row["close"] - row["open"])
-    nao_lateral = abs(row["close"] - row["open"]) / (row["high"] - row["low"]) > 0.5 if (row["high"] - row["low"]) != 0 else False
 
-    # Sinais fortes
-    sinal_1 = row["EMA10"] > row["EMA20"]
+    sinal_1 = (row["EMA10"] > row["EMA20"]) or (row["EMA10"] < row["EMA20"])
     sinal_2 = row["MACD"] > row["SINAL"]
     sinal_3 = row["CCI"] > 0
     sinal_4 = row["ADX"] > 20
+    nao_lateral = True  # Pode definir lógica real aqui
     sinal_5 = nao_lateral
-    fortes = [sinal_1, sinal_2, sinal_3, sinal_4, sinal_5]
 
-    # Sinais extras
+    sinais_fortes = [sinal_1, sinal_2, sinal_3, sinal_4, sinal_5]
+
     sinal_6 = row["volume_explosivo"]
-    sinal_7 = corpo > (ultimos5["close"].max() - ultimos5["low"].min())
+    sinal_7 = corpo > ultimos5["close"].max() - ultimos5["low"].min()
     extra_1 = prev["close"] > prev["open"]
     extra_2 = (row["high"] - row["close"]) < corpo
-    extras = [sinal_6, sinal_7, extra_1, extra_2]
+    sinais_extras = [sinal_6, sinal_7, extra_1, extra_2]
 
-    fortes_count = sum(bool(x) for x in fortes)
-    extras_count = sum(bool(x) for x in extras)
+    fortes = sum(sinais_fortes)
+    extras = sum(sinais_extras)
 
-    return fortes_count, extras_count
+    return fortes, extras
+
+def definir_entrada(fortes, extras):
+    if fortes >= 6 or (fortes >= 5 and extras >= 2):
+        return "LONG"
+    elif fortes <= 3 and extras <= 1:
+        return "SHORT"
+    else:
+        return "NENHUMA"
 
 def colocar_ordem(symbol, side, quantidade, preco_entrada, tp, sl):
     try:
-        # Ajuste do formato dos números para o API
-        quantidade_str = f"{quantidade:.8f}".replace(',', '.')
-        preco_entrada_str = f"{preco_entrada:.8f}".replace(',', '.')
-        tp_str = f"{tp:.8f}".replace(',', '.')
-        sl_str = f"{sl:.8f}".replace(',', '.')
-
-        params = {
-            "symbol": symbol,
-            "side": side,
-            "orderType": "Market",
-            "qty": quantidade_str,
-            "timeInForce": "GoodTillCancel",
-            "takeProfit": tp_str,
-            "stopLoss": sl_str
-        }
-        response = session.post_order_create(**params)
-        print(f"✅ Ordem {side} enviada para {symbol} com quantidade {quantidade_str}")
-        return response
+        response = session.place_active_order(
+            symbol=symbol,
+            side=side,
+            orderType="Market",
+            qty=quantidade,
+            timeInForce="GoodTillCancel",
+            takeProfit=tp,
+            stopLoss=sl,
+            reduceOnly=False,
+            closeOnTrigger=False
+        )
+        print(f"🟢 Ordem {side} enviada para {symbol} - Qtd: {quantidade} USDT")
+        print(f"   Preço entrada: {preco_entrada}, TP: {tp}, SL: {sl}")
     except Exception as e:
         print(f"❌ Erro ao enviar pedido para {symbol}: {e}")
 
 def main():
-    while True:
-        for symbol in symbols:
-            df = fetch_candles(symbol, interval)
-            df = calcular_indicadores(df)
+    for symbol in symbols:
+        df = fetch_candles(symbol, interval)
+        df = calcular_indicadores(df)
+        fortes, extras = sinais(df)
+        entrada = definir_entrada(fortes, extras)
 
-            now = datetime.now(timezone.utc)
-            ultimo_candle_time = df["timestamp"].iloc[-1]
-            atraso = (now - ultimo_candle_time).total_seconds()
+        print(f"\n🔍 Analisando {symbol}")
+        print(f"Sinais fortes: {fortes}, extras: {extras}, entrada sugerida: {entrada}")
 
-            if atraso > 3:
-                print(f"⚠️ ALERTA: Último candle de {symbol} está atrasado {atraso:.0f} segundos.")
-                continue  # Pula símbolo até candle atualizado
+        if entrada == "NENHUMA":
+            print("\nNenhuma entrada válida no momento.\n")
+            continue
 
-            fortes_count, extras_count = sinais(df)
+        preco_entrada = df["close"].iloc[-1]
+        sl = round(preco_entrada * 0.99, 6)  # exemplo SL -1%
+        tp = round(preco_entrada * 1.015, 6)  # exemplo TP +1.5%
 
-            entrada = "NONE"
-            if fortes_count >= 6 or (fortes_count >= 5 and extras_count >= 2):
-                entrada = "LONG"
-            elif fortes_count <= 1 and extras_count >= 2:
-                entrada = "SHORT"
+        # Calcular quantidade em tokens baseada na quantidade_usdt (simplificação)
+        quantidade = quantidade_usdt / preco_entrada
 
-            print(f"🔍 Analisando {symbol}")
-            print(f"Sinais fortes: {fortes_count}, extras: {extras_count}, entrada sugerida: {entrada}")
-
-            if entrada == "NONE":
-                print("Nenhuma entrada válida no momento.\n")
-                continue
-
-            preco_entrada = df["close"].iloc[-1]
-            if entrada == "LONG":
-                tp = preco_entrada * 1.015  # +1.5%
-                sl = preco_entrada * 0.99   # -1%
-                side = "Buy"
-            else:
-                tp = preco_entrada * 0.985  # -1.5%
-                sl = preco_entrada * 1.01   # +1%
-                side = "Sell"
-
-            quantidade = quantidade_usdt / preco_entrada
-            print(f"🟢 Enviando ordem {entrada} para {symbol} - Qtd: {quantidade} USDT")
-            print(f"   Preço entrada: {preco_entrada:.6f}, TP: {tp:.6f}, SL: {sl:.6f}")
-
-            colocar_ordem(symbol, side, quantidade, preco_entrada, tp, sl)
+        side = "Buy" if entrada == "LONG" else "Sell"
+        colocar_ordem(symbol, side, quantidade, preco_entrada, tp, sl)
 
         time.sleep(1)
 
 if __name__ == "__main__":
-    main()
+    while True:
+        main()
+        time.sleep(30)  # Roda a cada 30 segundos, pode ajustar para menor se quiser
+
 
