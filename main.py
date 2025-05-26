@@ -23,12 +23,11 @@ try:
     print(f"💰 Saldo disponível (simulado): {saldo_usdt} USDT")
 except Exception as e:
     print(f"❌ Falha ao conectar à API: {e}")
-    saldo_usdt = 0
 
 symbols = ["BNBUSDT", "BTCUSDT", "DOGEUSDT", "SOLUSDT", "ADAUSDT", "ETHUSDT"]
 interval = "1"
-quantidade_usdt = 5  # quantidade fixa por ordem (pode adaptar)
-pares_com_erro_leverage = ["ETHUSDT", "ADAUSDT", "BTCUSDT"]  # Exemplo, ajustar se precisar
+quantidade_usdt = 5
+pares_com_erro_leverage = ["ETHUSDT", "ADAUSDT", "BTCUSDT"]
 
 def fetch_candles(symbol, interval="1"):
     try:
@@ -41,31 +40,24 @@ def fetch_candles(symbol, interval="1"):
     except Exception as e:
         print(f"🚨 Erro ao buscar candles de {symbol}: {e}")
         time.sleep(1)
-        return fetch_candles(symbol, interval)
+        return fetch_candles(symbol)
 
 def calcular_adx(df, n=14):
-    high = df['high']
-    low = df['low']
-    close = df['close']
-
-    plus_dm = high.diff()
-    minus_dm = low.diff() * -1
-
-    plus_dm[plus_dm < 0] = 0
-    minus_dm[minus_dm < 0] = 0
-
-    tr1 = pd.Series(high - low)
-    tr2 = pd.Series(abs(high - close.shift()))
-    tr3 = pd.Series(abs(low - close.shift()))
-    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-    atr = tr.rolling(window=n).mean()
-
-    plus_di = 100 * (plus_dm.rolling(n).mean() / atr)
-    minus_di = 100 * (minus_dm.rolling(n).mean() / atr)
-
-    dx = (abs(plus_di - minus_di) / (plus_di + minus_di)) * 100
+    df = df.copy()
+    df['TR'] = np.maximum.reduce([
+        df['high'] - df['low'],
+        abs(df['high'] - df['close'].shift()),
+        abs(df['low'] - df['close'].shift())
+    ])
+    df['+DM'] = np.where((df['high'] - df['high'].shift()) > (df['low'].shift() - df['low']), 
+                         np.maximum(df['high'] - df['high'].shift(), 0), 0)
+    df['-DM'] = np.where((df['low'].shift() - df['low']) > (df['high'] - df['high'].shift()), 
+                         np.maximum(df['low'].shift() - df['low'], 0), 0)
+    atr = df['TR'].rolling(n).mean()
+    plus_di = 100 * (df['+DM'].rolling(n).mean() / atr)
+    minus_di = 100 * (df['-DM'].rolling(n).mean() / atr)
+    dx = 100 * (abs(plus_di - minus_di) / (plus_di + minus_di))
     adx = dx.rolling(n).mean()
-
     return adx
 
 def calcular_indicadores(df):
@@ -79,60 +71,75 @@ def calcular_indicadores(df):
     return df
 
 def sinais(df):
-    # Simples regra exemplo para sinal LONG ou SHORT, pode adaptar conforme estratégia
     fortes = 0
     extras = 0
-    entrada = "NENHUMA"
 
-    if df["EMA10"].iloc[-1] > df["EMA20"].iloc[-1]:
+    linha = df.iloc[-1]
+
+    # Exemplo de critérios para sinais fortes
+    if linha["EMA10"] > linha["EMA20"]:
         fortes += 1
-    if df["MACD"].iloc[-1] > df["SINAL"].iloc[-1]:
+    if linha["MACD"] > linha["SINAL"]:
         fortes += 1
-    if df["CCI"].iloc[-1] > 100:
+    if linha["CCI"] > 100:
+        fortes += 1
+    if linha["ADX"] > 20:
+        fortes += 1
+    if linha["volume_explosivo"]:
+        fortes += 1
+
+    # Sinais extras para confirmar ou reforçar
+    if linha["EMA10"] < linha["EMA20"]:
         extras += 1
-    if df["ADX"].iloc[-1] > 20:
+    if linha["MACD"] < linha["SINAL"]:
+        extras += 1
+    if linha["CCI"] < -100:
         extras += 1
 
-    # Decidir entrada baseado em indicadores
-    if fortes >= 2 and extras >= 1:
+    # Determinar a entrada sugerida
+    if fortes >= 4:
         entrada = "LONG"
-    elif fortes == 0 and extras == 0:
+    elif extras >= 3:
         entrada = "SHORT"
+    else:
+        entrada = "NENHUMA"
 
     return fortes, extras, entrada
 
-def enviar_ordem(symbol, lado, quantidade):
+def enviar_ordem(symbol, side, quantidade):
     try:
+        # Converter side para formato aceito pela API
+        side_api = "Buy" if side == "LONG" else "Sell"
         resposta = session.place_active_order_v2(
             symbol=symbol,
-            side="Buy" if lado == "LONG" else "Sell",
+            side=side_api,
             orderType="Market",
-            qty=quantidade,
+            qty=str(quantidade),
             timeInForce="GoodTillCancel",
             reduceOnly=False,
             closeOnTrigger=False
         )
-        print(f"💡 Ordem enviada para {symbol}: {lado}")
-        return resposta
+        print(f"💡 Ordem enviada para {symbol}: {side}")
+        print(resposta)
     except Exception as e:
         print(f"❌ Erro ao enviar pedido para {symbol}: {e}")
 
 def main():
     while True:
-        for simbolo in symbols:
-            df = fetch_candles(simbolo, interval)
+        for symbol in symbols:
+            df = fetch_candles(symbol, interval)
             df = calcular_indicadores(df)
-            fortes, extras, entrada_sugerida = sinais(df)
+            fortes, extras, entrada = sinais(df)
+            print(f"🔍 Analisando {symbol}")
+            print(f"Sinais fortes: {fortes}, extras: {extras}, entrada sugerida: {entrada}")
 
-            print(f"🔍 Analisando {simbolo}")
-            print(f"Sinais fortes: {fortes}, extras: {extras}, entrada sugerida: {entrada_sugerida}")
-
-            if entrada_sugerida in ["LONG", "SHORT"]:
-                enviar_ordem(simbolo, entrada_sugerida, quantidade_usdt)
+            if entrada != "NENHUMA":
+                quantidade = quantidade_usdt / df["close"].iloc[-1]
+                enviar_ordem(symbol, entrada, quantidade)
             else:
-                print("Nenhuma entrada válida no momento.")
+                print("Nenhuma entrada válida no momento.\n")
 
-            time.sleep(1)  # delay entre pares para não sobrecarregar API
+            time.sleep(1)  # Para não sobrecarregar API
 
 if __name__ == "__main__":
     main()
