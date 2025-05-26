@@ -1,5 +1,3 @@
-# === SukachBot PRO75 - Agora com TP de 1.5% automático e SL de -1% ===
-
 import pandas as pd
 import numpy as np
 from pybit.unified_trading import HTTP
@@ -12,7 +10,6 @@ load_dotenv()
 
 print("🚧 MODO DEMO ATIVO - Bybit Testnet em execução 🚧")
 
-# === Configurações ===
 api_key = os.getenv("BYBIT_API_KEY")
 api_secret = os.getenv("BYBIT_API_SECRET")
 session = HTTP(api_key=api_key, api_secret=api_secret, testnet=True)
@@ -57,37 +54,21 @@ def calcular_indicadores(df):
     df["MACD"] = df["close"].ewm(span=12).mean() - df["close"].ewm(span=26).mean()
     df["SINAL"] = df["MACD"].ewm(span=9).mean()
     df["CCI"] = (df["close"] - df["close"].rolling(20).mean()) / (0.015 * df["close"].rolling(20).std())
-    df["ADX"] = calcular_adx(df)  # função ADX que você deve implementar
-    df["volume_explosivo"] = df["volume"] > df["volume"].rolling(20).mean() * 1.5
-    # Defina seu critério de "não lateral" aqui:
-    df["nao_lateral"] = (df["EMA10"] > df["EMA20"]) | (df["EMA10"] < df["EMA20"])
+    df["ADX"] = ... # calcula ADX (implementa conforme necessário)
+    df["volume_explosivo"] = ... # lógica para volume explosivo (implementa conforme necessário)
+    # Aqui vai lógica do lateral ou não
+    df["nao_lateral"] = ... # lógica que define lateralidade
+    
     return df
 
-def calcular_adx(df, period=14):
-    # Cálculo simples de ADX (você pode adaptar)
-    df['TR'] = np.maximum.reduce([
-        df['high'] - df['low'],
-        abs(df['high'] - df['close'].shift(1)),
-        abs(df['low'] - df['close'].shift(1))
-    ])
-    df['+DM'] = np.where((df['high'] - df['high'].shift(1)) > (df['low'].shift(1) - df['low']),
-                         np.maximum(df['high'] - df['high'].shift(1), 0), 0)
-    df['-DM'] = np.where((df['low'].shift(1) - df['low']) > (df['high'] - df['high'].shift(1)),
-                         np.maximum(df['low'].shift(1) - df['low'], 0), 0)
-    df['TR_smooth'] = df['TR'].rolling(window=period).sum()
-    df['+DM_smooth'] = df['+DM'].rolling(window=period).sum()
-    df['-DM_smooth'] = df['-DM'].rolling(window=period).sum()
-    df['+DI'] = 100 * (df['+DM_smooth'] / df['TR_smooth'])
-    df['-DI'] = 100 * (df['-DM_smooth'] / df['TR_smooth'])
-    df['DX'] = 100 * (abs(df['+DI'] - df['-DI']) / (df['+DI'] + df['-DI']))
-    adx = df['DX'].rolling(window=period).mean()
-    return adx
+def sinais(df):
+    row = df.iloc[-1]
+    prev = df.iloc[-2]
+    ultimos5 = df.iloc[-6:-1]
 
-def avaliar_sinais(row, ultimos5, prev):
     corpo = abs(row["close"] - row["open"])
 
-    # Sinais fortes (5)
-    sinal_1 = (row["EMA10"] > row["EMA20"]) or (row["EMA10"] < row["EMA20"])
+    sinal_1 = row["EMA10"] > row["EMA20"]
     sinal_2 = row["MACD"] > row["SINAL"]
     sinal_3 = row["CCI"] > 0
     sinal_4 = row["ADX"] > 20
@@ -95,87 +76,65 @@ def avaliar_sinais(row, ultimos5, prev):
 
     sinais_fortes = [sinal_1, sinal_2, sinal_3, sinal_4, sinal_5]
 
-    # Sinais extras (4)
     sinal_6 = row["volume_explosivo"]
-    sinal_7 = corpo > ultimos5["close"].max() - ultimos5["low"].min()
+    sinal_7 = corpo > (ultimos5["close"].max() - ultimos5["low"].min())
     extra_1 = prev["close"] > prev["open"]
     extra_2 = (row["high"] - row["close"]) < corpo
 
     sinais_extras = [sinal_6, sinal_7, extra_1, extra_2]
 
-    return sinais_fortes, sinais_extras
+    fortes_verdadeiros = sum(sinais_fortes)
+    extras_verdadeiros = sum(sinais_extras)
 
-def colocar_ordem(symbol, side, quantidade, preco_entrada):
-    tp_perc = 0.015  # Take Profit 1.5%
-    sl_perc = 0.01   # Stop Loss 1%
+    return fortes_verdadeiros, extras_verdadeiros
 
-    if side == "Buy":
-        tp = preco_entrada * (1 + tp_perc)
-        sl = preco_entrada * (1 - sl_perc)
-    else:  # Sell (Short)
-        tp = preco_entrada * (1 - tp_perc)
-        sl = preco_entrada * (1 + sl_perc)
-
+def colocar_ordem(symbol, lado, quantidade, preco_tp, preco_sl):
     try:
-        order = session.place_order(
+        lado_api = "Buy" if lado == "LONG" else "Sell"
+        ordem = session.place_order(
             symbol=symbol,
-            side=side,
+            side=lado_api,
             orderType="Market",
-            qty=quantidade,
+            qty=str(round(quantidade, 8)),
             timeInForce="GoodTillCancel",
-            takeProfit=tp,
-            stopLoss=sl
+            takeProfit=str(round(preco_tp, 8)),
+            stopLoss=str(round(preco_sl, 8)),
         )
-        print(f"🟢 Ordem {side} enviada para {symbol} - Qtd: {quantidade} USDT")
-        print(f"   Preço de entrada: {preco_entrada}, TP: {tp}, SL: {sl}")
-        return order
+        print(f"✅ Ordem {lado} enviada para {symbol} - Qtd: {quantidade} USDT")
+        print(f"   Preço entrada: (market), TP: {preco_tp}, SL: {preco_sl}")
+        return ordem
     except Exception as e:
         print(f"❌ Erro ao enviar pedido para {symbol}: {e}")
-        return None
 
 def main():
-    while True:
-        for symbol in symbols:
-            print(f"\n🔍 Analisando {symbol}")
-            df = fetch_candles(symbol, interval)
-            df = calcular_indicadores(df)
+    for symbol in symbols:
+        print(f"\n🔍 Analisando {symbol}")
+        df = fetch_candles(symbol, interval)
+        df = calcular_indicadores(df)
+        fortes, extras = sinais(df)
 
-            row = df.iloc[-1]
-            prev = df.iloc[-2]
-            ultimos5 = df.iloc[-6:-1]
+        if fortes >= 6 or (fortes >= 5 and extras >= 2):
+            lado = "LONG"
+        elif fortes <= 2 and extras == 0:
+            lado = "SHORT"
+        else:
+            lado = "NONE"
 
-            sinais_fortes, sinais_extras = avaliar_sinais(row, ultimos5, prev)
+        print(f"Sinais fortes: {fortes}, extras: {extras}, entrada sugerida: {lado}")
 
-            fortes_count = sum(sinais_fortes)
-            extras_count = sum(sinais_extras)
+        if lado != "NONE":
+            preco_entrada = df["close"].iloc[-1]
+            tp = preco_entrada * 1.015
+            sl = preco_entrada * 0.99
 
-            entrada = "NONE"
-            if fortes_count >= 5 and extras_count >= 2:
-                entrada = "LONG"
-            elif fortes_count == 6:
-                entrada = "LONG"
-            elif fortes_count >= 5 and extras_count < 2:
-                entrada = "LONG"
-            else:
-                entrada = "NONE"
+            quantidade = quantidade_usdt / preco_entrada
 
-            print(f"\nSinais fortes: {fortes_count}, extras: {extras_count}, entrada sugerida: {entrada}")
-
-            if entrada == "LONG":
-                preco_entrada = row["close"]
-                quantidade = quantidade_usdt / preco_entrada
-                colocar_ordem(symbol, "Buy", quantidade, preco_entrada)
-
-            elif entrada == "SHORT":
-                preco_entrada = row["close"]
-                quantidade = quantidade_usdt / preco_entrada
-                colocar_ordem(symbol, "Sell", quantidade, preco_entrada)
-
-            else:
-                print(f"🔕 Sem sinais suficientes para entrada em {symbol}")
-
-        time.sleep(60)  # Espera 1 minuto entre as análises
+            colocar_ordem(symbol, lado, quantidade, tp, sl)
+        else:
+            print("Sem entrada para hoje.")
 
 if __name__ == "__main__":
-    main()
+    while True:
+        main()
+        time.sleep(60)
 
