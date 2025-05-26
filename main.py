@@ -20,14 +20,13 @@ try:
     balance = session.get_wallet_balance(accountType="UNIFIED")
     print("✅ API conectada com sucesso!")
     saldo_usdt = float(balance['result']['list'][0]['totalEquity'])
-    print(f"💰 Saldo disponível (simulado): {saldo_usdt} USDT")
+    print(f"💰 Saldo disponível (simulado): {saldo_usdt:.4f} USDT")
 except Exception as e:
     print(f"❌ Falha ao conectar à API: {e}")
 
 symbols = ["BNBUSDT", "BTCUSDT", "DOGEUSDT", "SOLUSDT", "ADAUSDT", "ETHUSDT"]
 interval = "1"
 quantidade_usdt = 5
-pares_com_erro_leverage = ["ETHUSDT", "ADAUSDT", "BTCUSDT"]
 
 def fetch_candles(symbol, interval="1"):
     try:
@@ -36,6 +35,13 @@ def fetch_candles(symbol, interval="1"):
         df = pd.DataFrame(candles, columns=["timestamp", "open", "high", "low", "close", "volume", "turnover"])
         df = df.astype({"open": float, "high": float, "low": float, "close": float, "volume": float})
         df["timestamp"] = pd.to_datetime(pd.to_numeric(df["timestamp"]), unit="ms", utc=True)
+
+        now = datetime.now(timezone.utc)
+        diff = now - df["timestamp"].iloc[-1]
+        atraso = int(diff.total_seconds())
+        if 60 < atraso < 300:
+            print(f"⚠️ AVISO: Último candle de {symbol} está atrasado {atraso} segundos!")
+
         return df
     except Exception as e:
         print(f"🚨 Erro ao buscar candles de {symbol}: {e}")
@@ -46,101 +52,97 @@ def calcular_adx(df, n=14):
     df = df.copy()
     df['TR'] = np.maximum.reduce([
         df['high'] - df['low'],
-        abs(df['high'] - df['close'].shift()),
-        abs(df['low'] - df['close'].shift())
+        abs(df['high'] - df['close'].shift(1)),
+        abs(df['low'] - df['close'].shift(1))
     ])
-    df['+DM'] = np.where((df['high'] - df['high'].shift()) > (df['low'].shift() - df['low']), 
-                         np.maximum(df['high'] - df['high'].shift(), 0), 0)
-    df['-DM'] = np.where((df['low'].shift() - df['low']) > (df['high'] - df['high'].shift()), 
-                         np.maximum(df['low'].shift() - df['low'], 0), 0)
+    df['plus_dm'] = np.where(
+        (df['high'] - df['high'].shift(1)) > (df['low'].shift(1) - df['low']),
+        np.maximum(df['high'] - df['high'].shift(1), 0),
+        0
+    )
+    df['minus_dm'] = np.where(
+        (df['low'].shift(1) - df['low']) > (df['high'] - df['high'].shift(1)),
+        np.maximum(df['low'].shift(1) - df['low'], 0),
+        0
+    )
     atr = df['TR'].rolling(n).mean()
-    plus_di = 100 * (df['+DM'].rolling(n).mean() / atr)
-    minus_di = 100 * (df['-DM'].rolling(n).mean() / atr)
-    dx = 100 * (abs(plus_di - minus_di) / (plus_di + minus_di))
+    plus_di = 100 * (df['plus_dm'].rolling(n).mean() / atr)
+    minus_di = 100 * (df['minus_dm'].rolling(n).mean() / atr)
+    dx = 100 * abs(plus_di - minus_di) / (plus_di + minus_di)
     adx = dx.rolling(n).mean()
-    return adx
+    return adx.fillna(0)
 
 def calcular_indicadores(df):
-    df["EMA10"] = df["close"].ewm(span=10).mean()
-    df["EMA20"] = df["close"].ewm(span=20).mean()
-    df["MACD"] = df["close"].ewm(span=12).mean() - df["close"].ewm(span=26).mean()
-    df["SINAL"] = df["MACD"].ewm(span=9).mean()
+    print("🧮 Calculando indicadores...")
+    df["EMA10"] = df["close"].ewm(span=10, adjust=False).mean()
+    df["EMA20"] = df["close"].ewm(span=20, adjust=False).mean()
+    df["MACD"] = df["close"].ewm(span=12, adjust=False).mean() - df["close"].ewm(span=26, adjust=False).mean()
+    df["SINAL"] = df["MACD"].ewm(span=9, adjust=False).mean()
     df["CCI"] = (df["close"] - df["close"].rolling(20).mean()) / (0.015 * df["close"].rolling(20).std())
     df["ADX"] = calcular_adx(df)
     df["volume_explosivo"] = df["volume"] > df["volume"].rolling(20).mean() * 1.5
+    print("✅ Indicadores calculados.")
     return df
 
-def sinais(df):
-    fortes = 0
+def avaliar_sinais(df):
+    # Exemplo simplificado: sinais fortes se EMA10 > EMA20 + MACD > SINAL + ADX > 25
+    sinais_fortes = 0
     extras = 0
 
-    linha = df.iloc[-1]
-
-    # Exemplo de critérios para sinais fortes
-    if linha["EMA10"] > linha["EMA20"]:
-        fortes += 1
-    if linha["MACD"] > linha["SINAL"]:
-        fortes += 1
-    if linha["CCI"] > 100:
-        fortes += 1
-    if linha["ADX"] > 20:
-        fortes += 1
-    if linha["volume_explosivo"]:
-        fortes += 1
-
-    # Sinais extras para confirmar ou reforçar
-    if linha["EMA10"] < linha["EMA20"]:
+    if df["EMA10"].iloc[-1] > df["EMA20"].iloc[-1]:
+        sinais_fortes += 1
+    if df["MACD"].iloc[-1] > df["SINAL"].iloc[-1]:
+        sinais_fortes += 1
+    if df["ADX"].iloc[-1] > 25:
+        sinais_fortes += 1
+    if df["CCI"].iloc[-1] > 100:
         extras += 1
-    if linha["MACD"] < linha["SINAL"]:
-        extras += 1
-    if linha["CCI"] < -100:
+    if df["volume_explosivo"].iloc[-1]:
         extras += 1
 
-    # Determinar a entrada sugerida
-    if fortes >= 4:
+    if sinais_fortes >= 3:
         entrada = "LONG"
-    elif extras >= 3:
+    elif sinais_fortes == 0 and extras > 0:
         entrada = "SHORT"
     else:
         entrada = "NENHUMA"
 
-    return fortes, extras, entrada
+    return sinais_fortes, extras, entrada
 
-def enviar_ordem(symbol, side, quantidade):
+def enviar_ordem(symbol, side, quantidade_usdt):
+    print(f"💡 Enviando ordem para {symbol}: {side}")
     try:
-        # Converter side para formato aceito pela API
-        side_api = "Buy" if side == "LONG" else "Sell"
-        resposta = session.place_active_order_v2(
+        # Usa o método correto place_active_order com parâmetros atualizados da API v5
+        ordem = session.place_active_order(
             symbol=symbol,
-            side=side_api,
+            side=side,
             orderType="Market",
-            qty=str(quantidade),
+            qty=quantidade_usdt,
             timeInForce="GoodTillCancel",
             reduceOnly=False,
             closeOnTrigger=False
         )
-        print(f"💡 Ordem enviada para {symbol}: {side}")
-        print(resposta)
+        print(f"✅ Ordem enviada para {symbol}: {ordem}")
     except Exception as e:
         print(f"❌ Erro ao enviar pedido para {symbol}: {e}")
 
-def main():
+def principal():
     while True:
         for symbol in symbols:
+            print(f"\n🔍 Analisando {symbol}")
             df = fetch_candles(symbol, interval)
             df = calcular_indicadores(df)
-            fortes, extras, entrada = sinais(df)
-            print(f"🔍 Analisando {symbol}")
-            print(f"Sinais fortes: {fortes}, extras: {extras}, entrada sugerida: {entrada}")
+            sinais_fortes, extras, entrada = avaliar_sinais(df)
+            print(f"Sinais fortes: {sinais_fortes}, extras: {extras}, entrada sugerida: {entrada}")
 
-            if entrada != "NENHUMA":
-                quantidade = quantidade_usdt / df["close"].iloc[-1]
-                enviar_ordem(symbol, entrada, quantidade)
+            if entrada in ["LONG", "SHORT"]:
+                enviar_ordem(symbol, entrada, quantidade_usdt)
             else:
-                print("Nenhuma entrada válida no momento.\n")
+                print("Nenhuma entrada válida no momento.")
 
-            time.sleep(1)  # Para não sobrecarregar API
+            time.sleep(1)  # evitar chamadas muito rápidas
+        print("\n--- Fim de ciclo, aguardando 30 segundos para próxima rodada ---\n")
+        time.sleep(30)
 
 if __name__ == "__main__":
-    main()
-
+    principal()
