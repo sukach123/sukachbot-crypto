@@ -1,3 +1,5 @@
+# === SukachBot PRO75 - Agora com TP de 1.5% automático e SL de -0.3% ===
+
 import pandas as pd
 import numpy as np
 from pybit.unified_trading import HTTP
@@ -10,7 +12,7 @@ load_dotenv()
 
 print("🚧 MODO DEMO ATIVO - Bybit Testnet em execução 🚧")
 
-# Configurações
+# === Configurações ===
 api_key = os.getenv("BYBIT_API_KEY")
 api_secret = os.getenv("BYBIT_API_SECRET")
 session = HTTP(api_key=api_key, api_secret=api_secret, testnet=True)
@@ -27,6 +29,7 @@ except Exception as e:
 symbols = ["BNBUSDT", "BTCUSDT", "DOGEUSDT", "SOLUSDT", "ADAUSDT", "ETHUSDT"]
 interval = "1"
 quantidade_usdt = 5
+pares_com_erro_leverage = ["ETHUSDT", "ADAUSDT", "BTCUSDT"]
 
 def fetch_candles(symbol, interval="1"):
     try:
@@ -35,10 +38,13 @@ def fetch_candles(symbol, interval="1"):
         df = pd.DataFrame(candles, columns=["timestamp", "open", "high", "low", "close", "volume", "turnover"])
         df = df.astype({"open": float, "high": float, "low": float, "close": float, "volume": float})
         df["timestamp"] = pd.to_datetime(pd.to_numeric(df["timestamp"]), unit="ms", utc=True)
+
         now = datetime.now(timezone.utc)
-        atraso = int((now - df["timestamp"].iloc[-1]).total_seconds())
+        diff = now - df["timestamp"].iloc[-1]
+        atraso = int(diff.total_seconds())
         if 60 < atraso < 300:
             print(f"⚠️ AVISO: Último candle de {symbol} está atrasado {atraso} segundos!")
+
         return df
     except Exception as e:
         print(f"🚨 Erro ao buscar candles de {symbol}: {e}")
@@ -51,123 +57,115 @@ def calcular_indicadores(df):
     df["MACD"] = df["close"].ewm(span=12).mean() - df["close"].ewm(span=26).mean()
     df["SINAL"] = df["MACD"].ewm(span=9).mean()
     df["CCI"] = (df["close"] - df["close"].rolling(20).mean()) / (0.015 * df["close"].rolling(20).std())
-    df["ADX"] = ta_adx(df)  # você deve implementar ou usar uma lib para ADX
-    df["volume_explosivo"] = df["volume"] > df["volume"].rolling(20).mean() * 1.5  # Exemplo
-    
+    # ADX - cálculo simplificado
+    df['TR'] = np.maximum(df['high'] - df['low'], np.maximum(abs(df['high'] - df['close'].shift()), abs(df['low'] - df['close'].shift())))
+    df['+DM'] = np.where((df['high'] - df['high'].shift()) > (df['low'].shift() - df['low']), np.maximum(df['high'] - df['high'].shift(), 0), 0)
+    df['-DM'] = np.where((df['low'].shift() - df['low']) > (df['high'] - df['high'].shift()), np.maximum(df['low'].shift() - df['low'], 0), 0)
+    tr14 = df['TR'].rolling(14).sum()
+    plus_dm14 = df['+DM'].rolling(14).sum()
+    minus_dm14 = df['-DM'].rolling(14).sum()
+    plus_di = 100 * (plus_dm14 / tr14)
+    minus_di = 100 * (minus_dm14 / tr14)
+    dx = (abs(plus_di - minus_di) / (plus_di + minus_di)) * 100
+    df["ADX"] = dx.rolling(14).mean()
+    # Indicador lateralidade (simples) - True se mercado não lateral
+    df["nao_lateral"] = df["close"].rolling(10).std() > 0.0005
+    # Volume explosivo simples (exemplo)
+    df["volume_explosivo"] = df["volume"] > df["volume"].rolling(20).mean() * 1.5
     return df
 
-# Função para calcular ADX, pode usar ta-lib ou outro método (simplificado aqui)
-def ta_adx(df, n=14):
-    # Placeholder simples para ADX, implementar corretamente com talib ou manualmente
-    # Para manter o exemplo simples, retorna 25 fixo
-    return pd.Series([25]*len(df), index=df.index)
+def identificar_sinais(row, ultimos5, prev):
+    corpo = abs(row["close"] - row["open"])
+    # Sinais fortes (5)
+    sinal_1 = (row["EMA10"] > row["EMA20"]) or (row["EMA10"] < row["EMA20"])
+    sinal_2 = row["MACD"] > row["SINAL"]
+    sinal_3 = row["CCI"] > 0
+    sinal_4 = row["ADX"] > 20
+    sinal_5 = row["nao_lateral"]
+    sinais_fortes = [sinal_1, sinal_2, sinal_3, sinal_4, sinal_5]
+    # Sinais extras (4)
+    sinal_6 = row["volume_explosivo"]
+    sinal_7 = corpo > ultimos5["close"].max() - ultimos5["low"].min()
+    extra_1 = prev["close"] > prev["open"]
+    extra_2 = (row["high"] - row["close"]) < corpo
+    sinais_extras = [sinal_6, sinal_7, extra_1, extra_2]
+    return sinais_fortes, sinais_extras
 
-def identificar_sinais(df):
-    sinais = []
-    for i in range(20, len(df)):
-        row = df.iloc[i]
-        prev = df.iloc[i-1]
-        ultimos5 = df.iloc[i-5:i]
+def calcular_quantidade(symbol, preco_entrada):
+    global saldo_usdt
+    qtd_usdt = quantidade_usdt
+    if symbol in pares_com_erro_leverage:
+        qtd_usdt = quantidade_usdt / 10  # reduzir exposição para pares com problema
+    quantidade = qtd_usdt / preco_entrada
+    return quantidade
 
-        corpo = abs(row["close"] - row["open"])
-        nao_lateral = abs(row["EMA10"] - row["EMA20"]) > 0.001  # critério lateralidade simples
-
-        # Sinais fortes
-        sinal_1 = (row["EMA10"] > row["EMA20"]) or (row["EMA10"] < row["EMA20"])  # sempre True? ajustar?
-        sinal_2 = row["MACD"] > row["SINAL"]
-        sinal_3 = row["CCI"] > 0
-        sinal_4 = row["ADX"] > 20
-        sinal_5 = nao_lateral
-        sinais_fortes = [sinal_1, sinal_2, sinal_3, sinal_4, sinal_5]
-
-        # Sinais extras
-        sinal_6 = row["volume_explosivo"]
-        sinal_7 = corpo > ultimos5["close"].max() - ultimos5["low"].min()
-        extra_1 = prev["close"] > prev["open"]
-        extra_2 = (row["high"] - row["close"]) < corpo
-        sinais_extras = [sinal_6, sinal_7, extra_1, extra_2]
-
-        # Contar sinais
-        fortes_count = sum(sinais_fortes)
-        extras_count = sum(sinais_extras)
-
-        # Determinar entrada LONG ou SHORT
-        # Aqui supomos LONG se EMA10 > EMA20 e MACD > SINAL e SHORT o contrário
-        if fortes_count >= 5 or (fortes_count >= 4 and extras_count >= 2):
-            if row["EMA10"] > row["EMA20"] and row["MACD"] > row["SINAL"]:
-                entrada = "LONG"
-            elif row["EMA10"] < row["EMA20"] and row["MACD"] < row["SINAL"]:
-                entrada = "SHORT"
-            else:
-                entrada = "NONE"
-        else:
-            entrada = "NONE"
-
-        sinais.append({
-            "timestamp": row["timestamp"],
-            "fortes": fortes_count,
-            "extras": extras_count,
-            "entrada": entrada
-        })
-
-    return sinais
-
-def colocar_ordem(symbol, lado, preco_entrada, quantidade):
+def colocar_ordem(symbol, lado, quantidade, preco_entrada):
+    tp_percent = 0.015
+    sl_percent = 0.003
+    if lado == "LONG":
+        tp_price = round(preco_entrada * (1 + tp_percent), 6)
+        sl_price = round(preco_entrada * (1 - sl_percent), 6)
+        side = "Buy"
+    else:
+        tp_price = round(preco_entrada * (1 - tp_percent), 6)
+        sl_price = round(preco_entrada * (1 + sl_percent), 6)
+        side = "Sell"
     try:
-        # Calcular TP e SL baseado no preço de entrada
-        if lado == "LONG":
-            tp_price = preco_entrada * 1.015  # +1.5%
-            sl_price = preco_entrada * 0.99   # -1%
-        elif lado == "SHORT":
-            tp_price = preco_entrada * 0.985  # -1.5%
-            sl_price = preco_entrada * 1.01   # +1%
-        else:
-            print(f"⚠️ Ordem não executada. Lado inválido: {lado}")
-            return
-
-        # Criar ordem de mercado com TP e SL (exemplo básico)
-        print(f"🟢 Enviando ordem {lado} para {symbol} - Qtd: {quantidade} USDT")
-        print(f"   Preço entrada: {preco_entrada:.4f}, TP: {tp_price:.4f}, SL: {sl_price:.4f}")
-
-        # Aqui você deve usar os endpoints corretos da API Bybit para abrir posição e colocar TP/SL
-        # Exemplo simplificado:
-        ordem = session.place_active_order(
+        order = session.place_active_order_v3(
             symbol=symbol,
-            side=lado,
+            side=side,
             orderType="Market",
-            qty=quantidade,
+            qty=round(quantidade, 6),
+            price=None,
             timeInForce="GoodTillCancel",
             reduceOnly=False,
             closeOnTrigger=False,
             takeProfit=tp_price,
-            stopLoss=sl_price
+            stopLoss=sl_price,
+            positionIdx=0
         )
-        print(f"✅ Ordem enviada: {ordem}")
+        print(f"🟢 Ordem {lado} enviada para {symbol} - Qtd: {quantidade}")
+        print(f"   Preço entrada: {preco_entrada}, TP: {tp_price}, SL: {sl_price}")
+        return True
     except Exception as e:
-        print(f"❌ Erro ao enviar ordem para {symbol}: {e}")
+        print(f"❌ Erro ao enviar pedido para {symbol}: {e}")
+        return False
 
 def main():
     while True:
         for symbol in symbols:
-            print(f"\n🔍 Analisando {symbol}")
             df = fetch_candles(symbol, interval)
             df = calcular_indicadores(df)
-            sinais = identificar_sinais(df)
-            if not sinais:
-                print("Sem sinais suficientes para analisar.")
-                continue
+            row = df.iloc[-1]
+            ultimos5 = df.iloc[-6:-1]
+            prev = df.iloc[-2]
 
-            ultimo_sinal = sinais[-1]
-            print(f"Sinais fortes: {ultimo_sinal['fortes']}, extras: {ultimo_sinal['extras']}, entrada sugerida: {ultimo_sinal['entrada']}")
+            sinais_fortes, sinais_extras = identificar_sinais(row, ultimos5, prev)
+            total_fortes = sum(sinais_fortes)
+            total_extras = sum(sinais_extras)
+            total_sinais = total_fortes + total_extras
 
-            if ultimo_sinal['entrada'] in ["LONG", "SHORT"]:
-                preco_entrada = df.iloc[-1]["close"]
-                quantidade = quantidade_usdt / preco_entrada
-                colocar_ordem(symbol, ultimo_sinal['entrada'], preco_entrada, quantidade)
+            entrada = None
+            if total_fortes >= 6 or (total_fortes >= 5 and total_extras >= 2):
+                if row["EMA10"] > row["EMA20"]:
+                    entrada = "LONG"
+                else:
+                    entrada = "SHORT"
+
+            print(f"\n🔍 Analisando {symbol}")
+            print(f"Sinais fortes: {total_fortes}, extras: {total_extras}, entrada sugerida: {entrada if entrada else 'NENHUMA'}")
+
+            if entrada:
+                preco_entrada = row["close"]
+                quantidade = calcular_quantidade(symbol, preco_entrada)
+                colocar_ordem(symbol, entrada, quantidade, preco_entrada)
             else:
-                print("⏸️ Entrada bloqueada - sinais insuficientes ou sem tendência clara.")
+                print(f"🔎 Entrada bloqueada para {symbol} | Sinais insuficientes.")
 
-        time.sleep(60)  # espera 1 minuto para próxima checagem
+            time.sleep(3)  # delay entre símbolos para evitar excesso de chamadas
+
+        print("\n⏳ Esperando próximo ciclo...\n")
+        time.sleep(15)  # delay geral antes de novo ciclo
 
 if __name__ == "__main__":
     main()
