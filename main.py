@@ -29,7 +29,6 @@ except Exception as e:
 symbols = ["BNBUSDT", "BTCUSDT", "DOGEUSDT", "SOLUSDT", "ADAUSDT", "ETHUSDT"]
 interval = "1"
 quantidade_usdt = 5
-pares_com_erro_leverage = ["ETHUSDT", "ADAUSDT", "BTCUSDT"]
 
 def fetch_candles(symbol, interval="1"):
     try:
@@ -57,116 +56,118 @@ def calcular_indicadores(df):
     df["MACD"] = df["close"].ewm(span=12).mean() - df["close"].ewm(span=26).mean()
     df["SINAL"] = df["MACD"].ewm(span=9).mean()
     df["CCI"] = (df["close"] - df["close"].rolling(20).mean()) / (0.015 * df["close"].rolling(20).std())
-    # ADX - cálculo simplificado
-    df['TR'] = np.maximum(df['high'] - df['low'], np.maximum(abs(df['high'] - df['close'].shift()), abs(df['low'] - df['close'].shift())))
-    df['+DM'] = np.where((df['high'] - df['high'].shift()) > (df['low'].shift() - df['low']), np.maximum(df['high'] - df['high'].shift(), 0), 0)
-    df['-DM'] = np.where((df['low'].shift() - df['low']) > (df['high'] - df['high'].shift()), np.maximum(df['low'].shift() - df['low'], 0), 0)
-    tr14 = df['TR'].rolling(14).sum()
-    plus_dm14 = df['+DM'].rolling(14).sum()
-    minus_dm14 = df['-DM'].rolling(14).sum()
-    plus_di = 100 * (plus_dm14 / tr14)
-    minus_di = 100 * (minus_dm14 / tr14)
-    dx = (abs(plus_di - minus_di) / (plus_di + minus_di)) * 100
-    df["ADX"] = dx.rolling(14).mean()
-    # Indicador lateralidade (simples) - True se mercado não lateral
-    df["nao_lateral"] = df["close"].rolling(10).std() > 0.0005
-    # Volume explosivo simples (exemplo)
-    df["volume_explosivo"] = df["volume"] > df["volume"].rolling(20).mean() * 1.5
+    df["ADX"] = calcular_adx(df)  # Função para calcular ADX precisa ser implementada
+
     return df
 
-def identificar_sinais(row, ultimos5, prev):
+def calcular_adx(df, n=14):
+    # Cálculo simplificado do ADX
+    df['TR'] = np.maximum.reduce([
+        df['high'] - df['low'],
+        abs(df['high'] - df['close'].shift(1)),
+        abs(df['low'] - df['close'].shift(1))
+    ])
+    df['+DM'] = np.where((df['high'] - df['high'].shift(1)) > (df['low'].shift(1) - df['low']), 
+                         np.maximum(df['high'] - df['high'].shift(1), 0), 0)
+    df['-DM'] = np.where((df['low'].shift(1) - df['low']) > (df['high'] - df['high'].shift(1)), 
+                         np.maximum(df['low'].shift(1) - df['low'], 0), 0)
+
+    df['TRn'] = df['TR'].rolling(n).sum()
+    df['+DMn'] = df['+DM'].rolling(n).sum()
+    df['-DMn'] = df['-DM'].rolling(n).sum()
+
+    df['+DI'] = 100 * (df['+DMn'] / df['TRn'])
+    df['-DI'] = 100 * (df['-DMn'] / df['TRn'])
+    df['DX'] = 100 * abs(df['+DI'] - df['-DI']) / (df['+DI'] + df['-DI'])
+
+    df['ADX'] = df['DX'].rolling(n).mean()
+    return df['ADX']
+
+def analisar_sinais(df):
+    row = df.iloc[-1]
+    ultimos5 = df.iloc[-6:-1]
+    prev = df.iloc[-2]
+
     corpo = abs(row["close"] - row["open"])
-    # Sinais fortes (5)
-    sinal_1 = (row["EMA10"] > row["EMA20"]) or (row["EMA10"] < row["EMA20"])
+
+    # Sinais Fortes (5)
+    sinal_1 = row["EMA10"] > row["EMA20"]
     sinal_2 = row["MACD"] > row["SINAL"]
     sinal_3 = row["CCI"] > 0
     sinal_4 = row["ADX"] > 20
-    sinal_5 = row["nao_lateral"]
+    nao_lateral = (row["EMA10"] - row["EMA20"]) > 0.01  # Exemplo, pode ajustar
+    sinal_5 = nao_lateral
+
     sinais_fortes = [sinal_1, sinal_2, sinal_3, sinal_4, sinal_5]
-    # Sinais extras (4)
-    sinal_6 = row["volume_explosivo"]
-    sinal_7 = corpo > ultimos5["close"].max() - ultimos5["low"].min()
+
+    # Sinais Extras (4)
+    sinal_6 = row["volume"] > ultimos5["volume"].mean() * 1.5
+    sinal_7 = corpo > (ultimos5["close"].max() - ultimos5["low"].min())
     extra_1 = prev["close"] > prev["open"]
     extra_2 = (row["high"] - row["close"]) < corpo
     sinais_extras = [sinal_6, sinal_7, extra_1, extra_2]
-    return sinais_fortes, sinais_extras
 
-def calcular_quantidade(symbol, preco_entrada):
-    global saldo_usdt
-    qtd_usdt = quantidade_usdt
-    if symbol in pares_com_erro_leverage:
-        qtd_usdt = quantidade_usdt / 10  # reduzir exposição para pares com problema
-    quantidade = qtd_usdt / preco_entrada
-    return quantidade
+    count_fortes = sum(sinais_fortes)
+    count_extras = sum(sinais_extras)
 
-def colocar_ordem(symbol, lado, quantidade, preco_entrada):
-    tp_percent = 0.015
-    sl_percent = 0.003
-    if lado == "LONG":
-        tp_price = round(preco_entrada * (1 + tp_percent), 6)
-        sl_price = round(preco_entrada * (1 - sl_percent), 6)
-        side = "Buy"
+    entrada = None
+    if count_fortes >= 6:
+        entrada = "LONG"
+    elif count_fortes >= 5 and count_extras >= 2:
+        entrada = "LONG"
+    elif count_fortes <= 2:  # exemplo para SHORT, ajustar conforme lógica
+        entrada = "SHORT"
     else:
-        tp_price = round(preco_entrada * (1 - tp_percent), 6)
-        sl_price = round(preco_entrada * (1 + sl_percent), 6)
-        side = "Sell"
+        entrada = "NONE"
+
+    return count_fortes, count_extras, entrada
+
+def colocar_ordem(symbol, side, quantidade, preco_entrada):
+    tp_percent = 0.015  # 1.5%
+    sl_percent = 0.003  # 0.3%
+
+    if side == "LONG":
+        tp_price = preco_entrada * (1 + tp_percent)
+        sl_price = preco_entrada * (1 - sl_percent)
+    else:  # SHORT
+        tp_price = preco_entrada * (1 - tp_percent)
+        sl_price = preco_entrada * (1 + sl_percent)
+
     try:
-        order = session.place_active_order_v3(
+        order = session.post_active_order(
             symbol=symbol,
             side=side,
             orderType="Market",
-            qty=round(quantidade, 6),
+            qty=quantidade,
             price=None,
             timeInForce="GoodTillCancel",
+            takeProfit=round(tp_price, 8),
+            stopLoss=round(sl_price, 8),
             reduceOnly=False,
-            closeOnTrigger=False,
-            takeProfit=tp_price,
-            stopLoss=sl_price,
-            positionIdx=0
+            closeOnTrigger=False
         )
-        print(f"🟢 Ordem {lado} enviada para {symbol} - Qtd: {quantidade}")
+        print(f"🟢 Ordem {side} enviada para {symbol} - Qtd: {quantidade}")
         print(f"   Preço entrada: {preco_entrada}, TP: {tp_price}, SL: {sl_price}")
-        return True
     except Exception as e:
         print(f"❌ Erro ao enviar pedido para {symbol}: {e}")
-        return False
 
 def main():
     while True:
         for symbol in symbols:
             df = fetch_candles(symbol, interval)
             df = calcular_indicadores(df)
-            row = df.iloc[-1]
-            ultimos5 = df.iloc[-6:-1]
-            prev = df.iloc[-2]
+            fortes, extras, entrada = analisar_sinais(df)
 
-            sinais_fortes, sinais_extras = identificar_sinais(row, ultimos5, prev)
-            total_fortes = sum(sinais_fortes)
-            total_extras = sum(sinais_extras)
-            total_sinais = total_fortes + total_extras
+            print(f"🔍 Analisando {symbol}")
+            print(f"Sinais fortes: {fortes}, extras: {extras}, entrada sugerida: {entrada}")
 
-            entrada = None
-            if total_fortes >= 6 or (total_fortes >= 5 and total_extras >= 2):
-                if row["EMA10"] > row["EMA20"]:
-                    entrada = "LONG"
-                else:
-                    entrada = "SHORT"
-
-            print(f"\n🔍 Analisando {symbol}")
-            print(f"Sinais fortes: {total_fortes}, extras: {total_extras}, entrada sugerida: {entrada if entrada else 'NENHUMA'}")
-
-            if entrada:
-                preco_entrada = row["close"]
-                quantidade = calcular_quantidade(symbol, preco_entrada)
+            if entrada in ["LONG", "SHORT"]:
+                preco_entrada = df["close"].iloc[-1]
+                quantidade = quantidade_usdt / preco_entrada
                 colocar_ordem(symbol, entrada, quantidade, preco_entrada)
-            else:
-                print(f"🔎 Entrada bloqueada para {symbol} | Sinais insuficientes.")
 
-            time.sleep(3)  # delay entre símbolos para evitar excesso de chamadas
-
-        print("\n⏳ Esperando próximo ciclo...\n")
-        time.sleep(15)  # delay geral antes de novo ciclo
+            time.sleep(1)
+        time.sleep(30)
 
 if __name__ == "__main__":
     main()
-
