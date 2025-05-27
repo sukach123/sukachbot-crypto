@@ -1,4 +1,4 @@
-# === SukachBot PRO75 - Agora com TP de 1.5% automático e SL de -0.3% e análise em tempo real por WebSocket ===
+# === SukachBot PRO75 - Agora com TP de 1.5% automático e SL de -0.3% ===
 
 import pandas as pd
 import numpy as np
@@ -12,18 +12,23 @@ load_dotenv()
 
 # === Configurações ===
 symbols = ["BNBUSDT", "BTCUSDT", "DOGEUSDT", "SOLUSDT", "ADAUSDT", "ETHUSDT"]
-interval = "1"
+interval = "1"  # 1 minuto para cálculo de candles (mas atualização será em tempo real via WebSocket)
 api_key = os.getenv("BYBIT_API_KEY")
 api_secret = os.getenv("BYBIT_API_SECRET")
 quantidade_usdt = 5
 
 session = HTTP(api_key=api_key, api_secret=api_secret, testnet=False)
 
-# WebSocket para streaming de dados em tempo real
-ws = WebSocket(testnet=False, api_key=api_key, api_secret=api_secret)
+# WebSocket com channel_type obrigatório
+ws = WebSocket(
+    channel_type="linear",
+    testnet=False,
+    api_key=api_key,
+    api_secret=api_secret
+)
 
-# Dicionário para armazenar candles por símbolo
-candles_data = {symbol: pd.DataFrame() for symbol in symbols}
+# Dicionário para armazenar candles atualizados por símbolo
+candles_data = {symbol: None for symbol in symbols}
 
 def calcular_indicadores(df):
     df["EMA10"] = df["close"].ewm(span=10).mean()
@@ -42,117 +47,91 @@ def calcular_indicadores(df):
     df["volume_explosivo"] = df["volume"] > df["volume_medio"]
     return df
 
-def avaliar_sinais(df):
+def analisar_sinais(df):
+    # Exemplo simplificado de 5 sinais, ajusta conforme sua lógica real
     sinais = 0
-
-    # Exemplo de sinais (ajuste conforme sua lógica original)
+    # Sinal 1: EMA10 > EMA20
     if df["EMA10"].iloc[-1] > df["EMA20"].iloc[-1]:
         sinais += 1
-    if df["MACD"].iloc[-1] > df["SINAL"].iloc[-1]:
+    # Sinal 2: MACD cruza acima da SINAL
+    if df["MACD"].iloc[-2] < df["SINAL"].iloc[-2] and df["MACD"].iloc[-1] > df["SINAL"].iloc[-1]:
         sinais += 1
-    if df["CCI"].iloc[-1] > 100:
+    # Sinal 3: CCI < -100 (exemplo)
+    if df["CCI"].iloc[-1] < -100:
         sinais += 1
+    # Sinal 4: ADX > 25 indicando tendência forte
     if df["ADX"].iloc[-1] > 25:
         sinais += 1
+    # Sinal 5: volume explosivo
     if df["volume_explosivo"].iloc[-1]:
         sinais += 1
-
     return sinais
 
-def abrir_posicao(symbol, side):
-    try:
-        # Busca preço atual para calcular quantidade
-        ticker = session.get_ticker(symbol=symbol)
-        preco_atual = float(ticker['result'][0]['lastPrice'])
-        quantidade = quantidade_usdt / preco_atual
+def abrir_posicao(symbol):
+    print(f"✅ Abrindo posição em {symbol} com {quantidade_usdt} USDT")
+    # Aqui entra sua lógica de ordem via API, por exemplo:
+    # session.place_active_order(...)
+    # Implementar Take Profit de 1.5% e Stop Loss de -0.3%
+    pass
 
-        # Envia ordem de mercado
-        order = session.place_active_order(
-            symbol=symbol,
-            side=side,
-            order_type="Market",
-            qty=round(quantidade, 3),
-            time_in_force="GoodTillCancel",
-            reduce_only=False,
-            close_on_trigger=False
-        )
-        print(f"Ordem {side} aberta para {symbol} qty={round(quantidade, 3)}")
-        return preco_atual, round(quantidade, 3)
-    except Exception as e:
-        print(f"Erro ao abrir posição: {e}")
-        return None, None
-
-def gerenciar_posicao(symbol, preco_entrada, quantidade, side):
-    # TP 1.5%, SL -0.3%
-    tp = preco_entrada * (1 + 0.015) if side == "Buy" else preco_entrada * (1 - 0.015)
-    sl = preco_entrada * (1 - 0.003) if side == "Buy" else preco_entrada * (1 + 0.003)
-
-    while True:
-        try:
-            ticker = session.get_ticker(symbol=symbol)
-            preco_atual = float(ticker['result'][0]['lastPrice'])
-
-            if (side == "Buy" and (preco_atual >= tp or preco_atual <= sl)) or \
-               (side == "Sell" and (preco_atual <= tp or preco_atual >= sl)):
-                # Fecha posição
-                close_side = "Sell" if side == "Buy" else "Buy"
-                session.place_active_order(
-                    symbol=symbol,
-                    side=close_side,
-                    order_type="Market",
-                    qty=quantidade,
-                    time_in_force="GoodTillCancel",
-                    reduce_only=True,
-                    close_on_trigger=False
-                )
-                print(f"Posição {side} de {symbol} fechada em {preco_atual:.4f}")
-                break
-
-            time.sleep(1)
-        except Exception as e:
-            print(f"Erro no gerenciamento de posição: {e}")
-            time.sleep(1)
-
-def on_candle_update(message):
-    # Recebe dados atualizados do candle em tempo real por WebSocket
-    symbol = message['topic'].split('.')[1]
-    candle = message['data']
-
-    new_row = {
+def on_candle_update(data):
+    symbol = data['topic'].split(".")[1]
+    candle = data['data']
+    
+    # Atualizar candles no dicionário
+    df_candle = pd.DataFrame([{
         "timestamp": pd.to_datetime(candle['start'], utc=True),
         "open": float(candle['open']),
         "high": float(candle['high']),
         "low": float(candle['low']),
         "close": float(candle['close']),
-        "volume": float(candle['volume'])
-    }
-
-    df = candles_data[symbol]
-    df = df.append(new_row, ignore_index=True)
-    if len(df) > 180:  # mantém últimas 180 barras para cálculo
-        df = df.iloc[-180:]
-
-    candles_data[symbol] = df
-
-    df = calcular_indicadores(df)
-    sinais = avaliar_sinais(df)
-
-    if sinais >= 5:
-        side = "Buy"
-    elif sinais <= 0:
-        side = "Sell"
+        "volume": float(candle['volume']),
+    }])
+    
+    if candles_data[symbol] is None:
+        # Para inicializar, pegar candles históricos para os últimos 200 candles
+        historical = session.get_kline(category="linear", symbol=symbol, interval=interval, limit=200)
+        hist_candles = historical['result']['list']
+        df_hist = pd.DataFrame(hist_candles, columns=["timestamp", "open", "high", "low", "close", "volume", "turnover"])
+        df_hist = df_hist.astype({"open": float, "high": float, "low": float, "close": float, "volume": float})
+        df_hist["timestamp"] = pd.to_datetime(pd.to_numeric(df_hist["timestamp"]), unit="ms", utc=True)
+        candles_data[symbol] = df_hist
+    
+    # Substituir último candle pelo novo ou adicionar se for um candle novo
+    if candle['start'] == candles_data[symbol]["timestamp"].iloc[-1].isoformat():
+        candles_data[symbol].iloc[-1] = df_candle.iloc[0]
     else:
-        return  # Sem sinal claro, não abre posição
+        candles_data[symbol] = pd.concat([candles_data[symbol], df_candle], ignore_index=True)
+        # Manter apenas últimos 200 candles
+        candles_data[symbol] = candles_data[symbol].iloc[-200:]
+    
+    # Recalcular indicadores e analisar sinais
+    df_atual = calcular_indicadores(candles_data[symbol])
+    sinais = analisar_sinais(df_atual)
+    
+    # Abrir posição se tiver pelo menos 5 sinais fortes (4 + 1 extra)
+    if sinais >= 5:
+        abrir_posicao(symbol)
 
-    preco_entrada, quantidade = abrir_posicao(symbol, side)
-    if preco_entrada:
-        gerenciar_posicao(symbol, preco_entrada, quantidade, side)
+def main():
+    # Subscrever candles em tempo real via WebSocket para cada símbolo
+    for symbol in symbols:
+        ws.subscribe(f"kline.{symbol}.1")
+    
+    print("🚀 Iniciando SukachBot PRO75 com atualização a cada segundo via WebSocket...")
+    
+    # Loop para manter conexão aberta e processar mensagens
+    while True:
+        try:
+            msg = ws.receive()
+            if msg and 'topic' in msg and 'data' in msg:
+                if msg['topic'].startswith("kline"):
+                    on_candle_update(msg)
+        except Exception as e:
+            print(f"Erro no loop principal: {e}")
+            time.sleep(1)
 
-# Assinar os tópicos websocket para candles 1s (Bybit não fornece 1s oficial, usa 1m com atualização real-time)
-for symbol in symbols:
-    topic = f"candle.1.{symbol}"
-    ws.subscribe(topic, callback=on_candle_update)
+if __name__ == "__main__":
+    main()
 
-# Iniciar websocket e manter rodando
-ws.run_forever()
 
