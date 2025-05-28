@@ -1,145 +1,191 @@
-import pandas as pd
-import numpy as np
-from pybit.unified_trading import HTTP
+# main.py completo com lógica PRO, estrutura de candle, indicadores e controle de risco
+from flask import Flask
+import os
 import time
-from datetime import datetime, timezone
+import random
+import threading
+import numpy as np
+import pandas as pd
+from pybit.unified_trading import HTTP
+from datetime import datetime
+import requests
 
-# === Configuração da API Testnet ===
-API_KEY = "SUA_API_KEY_AQUI"
-API_SECRET = "SEU_API_SECRET_AQUI"
+app = Flask(__name__)
 
-session = HTTP(
-    testnet=True,
-    api_key=API_KEY,
-    api_secret=API_SECRET
-)
+api_key = os.getenv("BYBIT_API_KEY")
+api_secret = os.getenv("BYBIT_API_SECRET")
 
-symbol = "BTCUSDT"
-interval = "1"
-qty = 0.01  # Quantidade para abrir a ordem
+session = HTTP(api_key=api_key, api_secret=api_secret, testnet=False)
+historico_resultados = []
 
-# === Função para buscar candles ===
-def fetch_candles(symbol, interval="1"):
+# === indicadores integrados ===
+def analisar_indicadores(df):
+    sinais = []
+    df["EMA_10"] = df["close"].ewm(span=10).mean()
+    df["EMA_20"] = df["close"].ewm(span=20).mean()
+    if df["EMA_10"].iloc[-1] > df["EMA_20"].iloc[-1]:
+        sinais.append("EMA")
+    delta = df["close"].diff()
+    ganho = delta.where(delta > 0, 0)
+    perda = -delta.where(delta < 0, 0)
+    media_ganho = ganho.rolling(14).mean()
+    media_perda = perda.rolling(14).mean()
+    rs = media_ganho / media_perda
+    rsi = 100 - (100 / (1 + rs))
+    if rsi.iloc[-1] < 30:
+        sinais.append("RSI")
+    exp1 = df["close"].ewm(span=12).mean()
+    exp2 = df["close"].ewm(span=26).mean()
+    macd = exp1 - exp2
+    signal = macd.ewm(span=9).mean()
+    if macd.iloc[-1] > signal.iloc[-1]:
+        sinais.append("MACD")
+    df["CCI"] = (df["close"] - df["close"].rolling(20).mean()) / (0.015 * df["close"].rolling(20).std())
+    if df["CCI"].iloc[-1] > 100:
+        sinais.append("CCI")
+    df["ADX"] = df["close"].rolling(14).std()
+    if df["ADX"].iloc[-1] > df["ADX"].mean():
+        sinais.append("ADX")
+    return sinais
+
+# === estrutura candle integrada ===
+def detectar_direcao_candle(candle_anterior, candle_atual):
+    open_price = float(candle_atual[1])
+    close_price = float(candle_atual[4])
+    if abs(close_price - open_price) < 0.0001:
+        return "Neutro"
+    elif close_price > open_price:
+        return "Alta"
+    else:
+        return "Baixa"
+
+# === função corrigida e reforçada para SL ===
+def aplicar_tp_sl(par, preco_entrada):
+    take_profit = round(preco_entrada * 1.02, 4)
+    stop_loss = round(preco_entrada * 0.997, 4)
+    trailing_ativado = False
+    sucesso = False
+    for tentativa in range(3):
+        try:
+            posicoes = session.get_positions(category="linear", symbol=par)["result"]["list"]
+            if posicoes:
+                preco_posicao = float(posicoes[0].get("entryPrice", preco_entrada))
+                atual = float(posicoes[0].get("markPrice", preco_entrada))
+                lucro_atual = (atual - preco_posicao) / preco_posicao
+                if lucro_atual > 0.006:
+                    novo_sl = round(atual * 0.997, 4)
+                    stop_loss = max(stop_loss, novo_sl)
+                    trailing_ativado = True
+                if stop_loss >= preco_posicao:
+                    stop_loss = round(preco_posicao - 0.0001, 4)
+                response = session.set_trading_stop(
+                    category="linear",
+                    symbol=par,
+                    takeProfit=take_profit,
+                    stopLoss=stop_loss
+                )
+                if response.get("retCode") == 0:
+                    print(f"✅ TP/SL definidos: TP={take_profit} | SL={stop_loss} {'(Trailing SL ativo)' if trailing_ativado else ''}")
+                    sucesso = True
+                    break
+                else:
+                    print(f"Erro ao aplicar TP/SL: {response}")
+        except Exception as e:
+            print(f"Falha ao aplicar TP/SL (tentativa {tentativa+1}): {e}")
+            time.sleep(1)
+    if not sucesso:
+        print("⚠️ Não foi possível aplicar TP/SL após 3 tentativas. Nova tentativa em 15 segundos...")
+        threading.Timer(15, aplicar_tp_sl, args=(par, preco_entrada)).start()
+
+# === função de validação da quantidade com precisão ===
+def ajustar_quantidade(par, usdt_alvo, alavancagem, preco_atual):
     try:
-        data = session.get_kline(
-            category="linear",
-            symbol=symbol,
-            interval=interval,
-            limit=100
-        )
-        df = pd.DataFrame(data['result']['list'], columns=[
-            "timestamp", "open", "high", "low", "close", "volume", "turnover"])
-        df["timestamp"] = pd.to_datetime(df["timestamp"].astype(np.int64), unit='ms')
-        df[["open", "high", "low", "close", "volume"]] = df[["open", "high", "low", "close", "volume"]].astype(float)
-        return df
+        info = session.get_instruments_info(category="linear", symbol=par)
+        filtro = info["result"]["list"][0]["lotSizeFilter"]
+        step = float(filtro["qtyStep"])
+        min_qty = float(filtro["minOrderQty"])
+        qty_bruta = (usdt_alvo * alavancagem) / preco_atual
+        precisao = abs(int(round(-np.log10(step), 0)))
+        qty_final = round(qty_bruta, precisao)
+        if qty_final < min_qty:
+            print(f"❌ Quantidade {qty_final} abaixo do mínimo permitido {min_qty} para {par}")
+            return None
+        return qty_final
     except Exception as e:
-        print(f"Erro ao buscar candles: {e}")
+        print(f"Erro ao ajustar quantidade: {e}")
         return None
 
-# === Função para calcular indicadores ===
-def aplicar_indicadores(df):
-    df["EMA10"] = df["close"].ewm(span=10, adjust=False).mean()
-    df["EMA20"] = df["close"].ewm(span=20, adjust=False).mean()
+# === monitorar_mercado ===
+def monitorar_mercado():
+    while True:
+        try:
+            pares = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "MATICUSDT", "AVAXUSDT", "LINKUSDT", "TONUSDT"]
+            par = random.choice(pares)
+            candles = session.get_kline(category="linear", symbol=par, interval="1", limit=50)["result"]["list"]
+            if len(candles) < 30:
+                print(f"⚠️ Poucos candles para {par}, a saltar...")
+                time.sleep(2)
+                continue
+            preco_atual = float(candles[-1][4])
+            df = pd.DataFrame(candles, columns=["timestamp", "open", "high", "low", "close", "volume", "turnover"])
+            df[["open", "high", "low", "close"]] = df[["open", "high", "low", "close"]].astype(float)
+            sinais = analisar_indicadores(df)
+            print(f"📊 Indicadores detectados para {par}: {sinais}")
+            if len(sinais) < 4 or len(sinais) > 12:
+                print("⛔ Número de sinais fora do intervalo 4-12. Ignorado.")
+                continue
+            essenciais = ["RSI", "EMA", "MACD", "CCI", "ADX"]
+            if not any(s in sinais for s in essenciais):
+                print("⛔ Nenhum indicador essencial presente. Ignorado.")
+                continue
+            direcao = detectar_direcao_candle(candles[-2], candles[-1])
+            print(f"🕯️ Direção do candle atual: {direcao}")
+            if direcao == "Neutro":
+                print("⚠️ Vela neutra detectada. Ignorado.")
+                continue
+            wallet = session.get_wallet_balance(accountType="UNIFIED")
+            coins = wallet.get("result", {}).get("list", [])[0].get("coin", [])
+            saldo_total = 0
+            for c in coins:
+                if c.get("coin") == "USDT":
+                    saldo_total = float(c.get("equity", "0"))
+                    break
+            print(f"💰 Saldo USDT aprovado: {saldo_total}")
+            if saldo_total < 3:
+                print("❌ Saldo insuficiente — não vai entrar.")
+                continue
+            qty = ajustar_quantidade(par, 3, 2, preco_atual)
+            if qty is None:
+                continue
+            session.place_order(
+                category="linear",
+                symbol=par,
+                side="Buy" if direcao == "Alta" else "Sell",
+                orderType="Market",
+                qty=qty,
+                leverage=2
+            )
+            historico_resultados.append(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | {par} | Entrada {direcao} | Qty={qty}")
+            print(f"🚀 ENTRADA REAL: {par} | Qty: {qty} | Preço: {preco_atual} | Direção: {direcao}")
+            aplicar_tp_sl(par, preco_atual)
+        except Exception as e:
+            print(f"Erro no monitoramento: {e}")
+        time.sleep(2)
 
-    # MACD
-    ema12 = df["close"].ewm(span=12, adjust=False).mean()
-    ema26 = df["close"].ewm(span=26, adjust=False).mean()
-    df["MACD"] = ema12 - ema26
-    df["SINAL"] = df["MACD"].ewm(span=9, adjust=False).mean()
+# === manter ativo ===
+def manter_ativo():
+    def pingar():
+        while True:
+            try:
+                requests.get("https://sukachbot-crypto-production.up.railway.app/")
+                print("🔄 Ping enviado para manter online")
+            except:
+                pass
+            time.sleep(300)
+    threading.Thread(target=pingar, daemon=True).start()
 
-    # CCI
-    tp = (df["high"] + df["low"] + df["close"]) / 3
-    sma = tp.rolling(20).mean()
-    mad = tp.rolling(20).apply(lambda x: np.mean(np.abs(x - np.mean(x))))
-    df["CCI"] = (tp - sma) / (0.015 * mad)
-
-    # ADX
-    df["TR"] = df[["high", "low", "close"]].max(axis=1) - df[["high", "low"]].min(axis=1)
-    df["+DM"] = df["high"].diff()
-    df["-DM"] = df["low"].diff()
-    df["+DM"] = np.where((df["+DM"] > df["-DM"]) & (df["+DM"] > 0), df["+DM"], 0)
-    df["-DM"] = np.where((df["-DM"] > df["+DM"]) & (df["-DM"] > 0), df["-DM"], 0)
-    tr14 = df["TR"].rolling(window=14).sum()
-    plus_dm14 = df["+DM"].rolling(window=14).sum()
-    minus_dm14 = df["-DM"].rolling(window=14).sum()
-    plus_di14 = 100 * (plus_dm14 / tr14)
-    minus_di14 = 100 * (minus_dm14 / tr14)
-    dx = 100 * np.abs(plus_di14 - minus_di14) / (plus_di14 + minus_di14)
-    df["ADX"] = dx.rolling(window=14).mean()
-
-    return df
-
-# === Função de decisão e envio de ordem ===
-def analisar_e_executar(df):
-    row = df.iloc[-1]
-    agora = row["timestamp"]
-
-    sinais_fortes = []
-    sinais_extras = []
-
-    # Sinais fortes
-    if row["EMA10"] > row["EMA20"]:
-        sinais_fortes.append("EMA10 > EMA20")
-
-    if row["MACD"] > row["SINAL"]:
-        sinais_fortes.append("MACD > SINAL")
-
-    if row["CCI"] > 0:
-        sinais_fortes.append("CCI > 0")
-
-    if row["ADX"] > 20:
-        sinais_fortes.append("ADX > 20")
-
-    if row["close"] > df["close"].rolling(50).mean().iloc[-1]:
-        sinais_fortes.append("Preço acima da média 50")
-
-    # Extras
-    if row["ADX"] < 50:
-        sinais_extras.append("Tendência não exagerada")
-
-    if row["volume"] > df["volume"].rolling(20).mean().iloc[-1]:
-        sinais_extras.append("Volume acima da média")
-
-    # Diagnóstico
-    print(f"\n📊 Diagnóstico de sinais em {agora}")
-    for s in sinais_fortes:
-        print(f"✅ {s}")
-    for e in sinais_extras:
-        print(f"➕ Extra: {e}")
-
-    total = len(sinais_fortes)
-    extra = len(sinais_extras)
-
-    print(f"\n✔️ Total: {total} fortes + {extra} extras = {total + extra}/9")
-
-    if total >= 5 or (total == 4 and extra >= 1):
-        print(f"\n🔔 Entrada validada em {agora}")
-        enviar_ordem(row["close"])
-
-# === Enviar ordem de mercado com TP e SL ===
-def enviar_ordem(preco_entrada):
-    tp = round(preco_entrada * 1.015, 2)
-    sl = round(preco_entrada * 0.997, 2)
-
-    try:
-        ordem = session.place_order(
-            category="linear",
-            symbol=symbol,
-            side="Buy",
-            order_type="Market",
-            qty=qty,
-            take_profit=str(tp),
-            stop_loss=str(sl),
-            time_in_force="GoodTillCancel"
-        )
-        print("✅ Ordem enviada:", ordem)
-    except Exception as e:
-        print("🚨 Erro ao enviar ordem:", e)
-
-# === Loop principal ===
-while True:
-    df = fetch_candles(symbol)
-    if df is not None:
-        df = aplicar_indicadores(df)
-        analisar_e_executar(df)
-    time.sleep(60)
+if __name__ == "__main__":
+    manter_ativo()
+    threading.Thread(target=monitorar_mercado, daemon=True).start()
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
