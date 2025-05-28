@@ -2,106 +2,133 @@
 
 import pandas as pd
 import numpy as np
+from pybit.unified_trading import HTTP, WebSocket
 import threading
 import time
-from pybit.unified_trading import WebSocket, HTTP
 
-# Configurações da API
+# Configuração da conta
 api_key = "SUA_API_KEY"
 api_secret = "SEU_API_SECRET"
 
-session = HTTP(testnet=True, api_key=api_key, api_secret=api_secret)
+session = HTTP(api_key=api_key, api_secret=api_secret, testnet=True)
 
-# WebSocket correto com channel_type
-ws = WebSocket(
-    testnet=True,
-    channel_type="linear",
-    api_key=api_key,
-    api_secret=api_secret
-)
+symbol = "BTCUSDT"
+interval = "1"
+limit = 180
+tp_percent = 1.5
+sl_percent = -0.3
+active_position = False
+entry_price = 0
 
-# Dados históricos para cálculo dos sinais
-historico = []
-
+# === Função de Análise Técnica ===
 def calcular_sinais(df):
     sinais = []
 
-    df["EMA10"] = df["close"].ewm(span=10, adjust=False).mean()
-    df["EMA20"] = df["close"].ewm(span=20, adjust=False).mean()
-    df["MACD"] = df["close"].ewm(span=12, adjust=False).mean() - df["close"].ewm(span=26, adjust=False).mean()
-    df["Signal"] = df["MACD"].ewm(span=9, adjust=False).mean()
-    df["RSI"] = 100 - (100 / (1 + df["close"].pct_change().rolling(14).mean()))
+    df['EMA10'] = df['close'].ewm(span=10).mean()
+    df['EMA20'] = df['close'].ewm(span=20).mean()
 
-    ultima = df.iloc[-1]
+    df['MACD'] = df['close'].ewm(span=12).mean() - df['close'].ewm(span=26).mean()
+    df['Signal'] = df['MACD'].ewm(span=9).mean()
 
-    # Sinais fortes
-    if ultima["EMA10"] > ultima["EMA20"]:
-        sinais.append("EMA_CROSS")
-    if ultima["MACD"] > ultima["Signal"]:
-        sinais.append("MACD_CROSS")
-    if ultima["RSI"] > 50:
-        sinais.append("RSI_POSITIVO")
-    if ultima["close"] > df["close"].rolling(20).mean().iloc[-1]:
-        sinais.append("PRECO_ACIMA_MEDIA")
+    df['RSI'] = 100 - (100 / (1 + df['close'].pct_change().add(1).rolling(window=14).apply(lambda x: (x[x > 1].sum() / x[x <= 1].sum()) if x[x <= 1].sum() != 0 else 0)))
 
-    # Extra
-    if df["close"].iloc[-1] > df["close"].iloc[-2]:
-        sinais.append("EXTRA_SUBIU")
+    close = df['close']
+    delta = close.diff()
+    gain = delta.where(delta > 0, 0)
+    loss = -delta.where(delta < 0, 0)
+    avg_gain = gain.rolling(window=14).mean()
+    avg_loss = loss.rolling(window=14).mean()
+    rs = avg_gain / avg_loss
+    df['RSI'] = 100 - (100 / (1 + rs))
+
+    df['Volume MA'] = df['volume'].rolling(window=20).mean()
+
+    # Verificações de sinais
+    if df['EMA10'].iloc[-1] > df['EMA20'].iloc[-1]:
+        sinais.append("EMA10>EMA20")
+    if df['MACD'].iloc[-1] > df['Signal'].iloc[-1]:
+        sinais.append("MACD>Signal")
+    if df['RSI'].iloc[-1] > 50:
+        sinais.append("RSI>50")
+    if df['close'].iloc[-1] > df['EMA10'].iloc[-1]:
+        sinais.append("Preço>EMA10")
+    if df['volume'].iloc[-1] > df['Volume MA'].iloc[-1]:
+        sinais.append("Volume>Media")
 
     return sinais
 
-def executar_trade(sinais, preco):
-    if len(sinais) >= 5 or (len(sinais) == 4 and "EXTRA_SUBIU" in sinais):
-        print(f"📈 Entrada confirmada com sinais: {sinais}")
-        try:
-            order = session.place_order(
-                category="linear",
-                symbol="BTCUSDT",
-                side="Buy",
-                order_type="Market",
-                qty=0.01,
-                take_profit=round(preco * 1.015, 2),
-                stop_loss=round(preco * 0.997, 2),
-                time_in_force="GoodTillCancel",
-                reduce_only=False
-            )
-            print("✅ Ordem executada:", order)
-        except Exception as e:
-            print("❌ Erro ao executar ordem:", e)
+# === Execução de Ordem ===
+def executar_ordem(direcao, preco):
+    global active_position, entry_price
+    print(f"📈 Executando ORDEM {direcao} a {preco}")
+    active_position = True
+    entry_price = preco
 
-def processar_candle(candle):
+def verificar_tp_sl(preco_atual):
+    global active_position, entry_price
+    if not active_position:
+        return
+    variacao = (preco_atual - entry_price) / entry_price * 100
+    if variacao >= tp_percent:
+        print(f"✅ TP alcançado: Lucro de {variacao:.2f}%")
+        active_position = False
+    elif variacao <= sl_percent:
+        print(f"🛑 SL acionado: Perda de {variacao:.2f}%")
+        active_position = False
+
+# === Callback do WebSocket ===
+df_candles = pd.DataFrame()
+
+def handle_candle(message):
+    global df_candles
+
     try:
-        global historico
+        if 'data' in message and isinstance(message['data'], dict):
+            k = message['data']
+            new_candle = {
+                'timestamp': pd.to_datetime(k['timestamp'], unit='ms'),
+                'open': float(k['open']),
+                'high': float(k['high']),
+                'low': float(k['low']),
+                'close': float(k['close']),
+                'volume': float(k['volume'])
+            }
+            df_candles = pd.concat([df_candles, pd.DataFrame([new_candle])]).drop_duplicates('timestamp')
+            df_candles = df_candles.sort_values('timestamp').tail(limit).reset_index(drop=True)
 
-        # candle é uma lista
-        close = float(candle[2])
-        timestamp = int(candle[0])
+            if len(df_candles) >= 20:
+                sinais = calcular_sinais(df_candles)
+                preco_atual = df_candles['close'].iloc[-1]
 
-        historico.append({
-            "timestamp": timestamp,
-            "close": close
-        })
+                if len(sinais) >= 4:
+                    print(f"📊 Sinais detectados: {sinais}")
+                    if not active_position:
+                        print("🟢 Entrada com base nos sinais.")
+                        executar_ordem("COMPRA", preco_atual)
 
-        # Limita a 180 candles
-        if len(historico) > 180:
-            historico = historico[-180:]
-
-        df = pd.DataFrame(historico)
-        sinais = calcular_sinais(df)
-        executar_trade(sinais, close)
+                verificar_tp_sl(preco_atual)
 
     except Exception as e:
-        print("Erro ao processar candle:", e)
+        print(f"Erro ao processar candle: {e}")
 
+# === Início do WebSocket ===
 def iniciar_ws():
-    print("📡 WebSocket iniciado e ouvindo candles a cada segundo...")
-
+    ws = WebSocket(
+        testnet=True,
+        api_key=api_key,
+        api_secret=api_secret,
+        channel_type="linear"
+    )
     ws.kline_stream(
         interval="1",
-        symbol="BTCUSDT",
-        callback=lambda msg: processar_candle(msg["data"]["kline"])
+        symbol=symbol,
+        callback=handle_candle
     )
+    print("📡 WebSocket iniciado e ouvindo candles a cada segundo...")
 
-# Rodar o WebSocket em uma thread separada
+# Iniciar WebSocket em thread separada
 threading.Thread(target=iniciar_ws).start()
 
+# Manter script vivo
+while True:
+    time.sleep(1)
