@@ -1,3 +1,5 @@
+# === SukachBot PRO75 - Agora com TP de 1.5% automático e SL de -0.3% ===
+
 import pandas as pd
 import numpy as np
 from pybit.unified_trading import HTTP
@@ -10,7 +12,7 @@ load_dotenv()
 
 # === Configurações ===
 symbols = ["BNBUSDT", "BTCUSDT", "DOGEUSDT", "SOLUSDT", "ADAUSDT", "ETHUSDT"]
-interval = "1"  # 1 minuto
+interval = "1"
 api_key = os.getenv("BYBIT_API_KEY")
 api_secret = os.getenv("BYBIT_API_SECRET")
 quantidade_usdt = 5
@@ -24,159 +26,184 @@ def fetch_candles(symbol, interval="1"):
         df = pd.DataFrame(candles, columns=["timestamp", "open", "high", "low", "close", "volume", "turnover"])
         df = df.astype({"open": float, "high": float, "low": float, "close": float, "volume": float})
         df["timestamp"] = pd.to_datetime(pd.to_numeric(df["timestamp"]), unit="ms", utc=True)
+
+        # Verificar se candle está atrasado
         now = datetime.now(timezone.utc)
         diff = now - df["timestamp"].iloc[-1]
         atraso = int(diff.total_seconds())
         if 60 < atraso < 300:
             print(f"⚠️ AVISO: Último candle de {symbol} está atrasado {atraso} segundos!")
+
         return df
     except Exception as e:
         print(f"🚨 Erro ao buscar candles de {symbol}: {e}")
         time.sleep(1)
-        return fetch_candles(symbol, interval)
+        return fetch_candles(symbol)
 
 def calcular_indicadores(df):
-    # EMA
     df["EMA10"] = df["close"].ewm(span=10).mean()
     df["EMA20"] = df["close"].ewm(span=20).mean()
-
-    # MACD e sinal
-    ema12 = df["close"].ewm(span=12).mean()
-    ema26 = df["close"].ewm(span=26).mean()
-    df["MACD"] = ema12 - ema26
+    df["MACD"] = df["close"].ewm(span=12).mean() - df["close"].ewm(span=26).mean()
     df["SINAL"] = df["MACD"].ewm(span=9).mean()
-
-    # CCI
-    tp = (df["high"] + df["low"] + df["close"]) / 3
-    sma_tp = tp.rolling(20).mean()
-    mad = tp.rolling(20).apply(lambda x: np.fabs(x - x.mean()).mean())
-    df["CCI"] = (tp - sma_tp) / (0.015 * mad)
-
-    # TR, ATR, ADX
-    df["TR"] = np.maximum.reduce([
-        df["high"] - df["low"],
-        abs(df["high"] - df["close"].shift()),
-        abs(df["low"] - df["close"].shift())
-    ])
-    df["ATR"] = df["TR"].rolling(14).mean()
-
-    # Calculando +DI e -DI para ADX
-    df["up_move"] = df["high"] - df["high"].shift()
-    df["down_move"] = df["low"].shift() - df["low"]
-    df["+DM"] = np.where((df["up_move"] > df["down_move"]) & (df["up_move"] > 0), df["up_move"], 0)
-    df["-DM"] = np.where((df["down_move"] > df["up_move"]) & (df["down_move"] > 0), df["down_move"], 0)
-    df["+DI"] = 100 * (df["+DM"].ewm(alpha=1/14).mean() / df["ATR"])
-    df["-DI"] = 100 * (df["-DM"].ewm(alpha=1/14).mean() / df["ATR"])
-    df["DX"] = (abs(df["+DI"] - df["-DI"]) / (df["+DI"] + df["-DI"])) * 100
-    df["ADX"] = df["DX"].ewm(alpha=1/14).mean()
-
-    # RSI
-    delta = df["close"].diff()
-    up = delta.clip(lower=0)
-    down = -1 * delta.clip(upper=0)
-    avg_gain = up.rolling(14).mean()
-    avg_loss = down.rolling(14).mean()
-    rs = avg_gain / avg_loss
-    df["RSI"] = 100 - (100 / (1 + rs))
-
-    # Volume médio
+    df["CCI"] = (df["close"] - df["close"].rolling(20).mean()) / (0.015 * df["close"].rolling(20).std())
+    df["ADX"] = abs(df["high"] - df["low"]).rolling(14).mean()
+    df["ATR"] = (df["high"] - df["low"]).rolling(14).mean()
     df["volume_medio"] = df["volume"].rolling(20).mean()
-
+    df["volume_explosivo"] = df["volume"] > 1.3 * df["volume_medio"]
     return df
 
-def gerar_sinais(df):
-    sinais = []
+def verificar_entrada(df):
+    row = df.iloc[-1]
+    prev = df.iloc[-2]
+    ultimos5 = df.iloc[-5:]
+    ultimos20 = df.iloc[-20:]
 
-    # 1. EMA10 cruza EMA20
-    sinais.append(1 if df["EMA10"].iloc[-1] > df["EMA20"].iloc[-1] else (-1 if df["EMA10"].iloc[-1] < df["EMA20"].iloc[-1] else 0))
+    corpo = abs(row["close"] - row["open"])
+    volatilidade = ultimos20["high"].max() - ultimos20["low"].min()
+    media_atr = ultimos20["ATR"].mean()
+    nao_lateral = volatilidade > (2 * media_atr)
 
-    # 2. MACD > sinal
-    sinais.append(1 if df["MACD"].iloc[-1] > df["SINAL"].iloc[-1] else (-1 if df["MACD"].iloc[-1] < df["SINAL"].iloc[-1] else 0))
+    sinal_1 = row["EMA10"] > row["EMA20"] or row["EMA10"] < row["EMA20"]
+    sinal_2 = row["MACD"] > row["SINAL"]
+    sinal_3 = row["CCI"] > 0
+    sinal_4 = row["ADX"] > 20
+    sinal_5 = row["volume_explosivo"]
+    sinal_6 = corpo > ultimos5["close"].max() - ultimos5["low"].min()
+    sinal_7 = nao_lateral
 
-    # 3. CCI
-    sinais.append(1 if df["CCI"].iloc[-1] > 100 else (-1 if df["CCI"].iloc[-1] < -100 else 0))
+    sinais_fortes = [
+        sinal_1,  # EMA10 vs EMA20
+        sinal_2,  # MACD > SINAL
+        sinal_3,  # CCI > 0
+        sinal_4,  # ADX > 20
+        sinal_7   # Não lateral
+    ]
 
-    # 4. ADX > 25 com MACD alinhado
-    if df["ADX"].iloc[-1] > 25:
-        if df["MACD"].iloc[-1] > df["SINAL"].iloc[-1]:
-            sinais.append(1)
-        elif df["MACD"].iloc[-1] < df["SINAL"].iloc[-1]:
-            sinais.append(-1)
+    extra_1 = prev["close"] > prev["open"]
+    extra_2 = (row["high"] - row["close"]) < corpo
+    sinais_extras = [
+        sinal_5,  # volume_explosivo
+        sinal_6,  # corpo_grande
+        extra_1,  # vela anterior de alta
+        extra_2   # pavio pequeno
+    ]
+
+    total_confirmados = sum(sinais_fortes) + sum(sinais_extras)
+
+    print(f"\n📊 Diagnóstico de sinais em {row['timestamp']}")
+    print(f"📌 EMA10 vs EMA20: {sinal_1}")
+    print(f"📌 MACD > SINAL: {sinal_2}")
+    print(f"📌 CCI > 0: {sinal_3} (valor: {row['CCI']:.2f})")
+    print(f"📌 ADX > 20: {sinal_4} (valor: {row['ADX']:.2f})")
+    print(f"📌 Volume explosivo: {sinal_5} (volume: {row['volume']:.2f})")
+    print(f"📌 Corpo grande: {sinal_6}")
+    print(f"📌 Não lateral: {sinal_7}")
+    print(f"📌 Extra: Vela anterior de alta: {extra_1}")
+    print(f"📌 Extra: Pequeno pavio superior: {extra_2}")
+    print(f"✔️ Total: {sum(sinais_fortes)} fortes + {sum(sinais_extras)} extras = {total_confirmados}/9")
+
+    if sum(sinais_fortes) >= 6 or (sum(sinais_fortes) == 5 and sum(sinais_extras) >= 2):
+        preco_atual = row["close"]
+        diferenca_ema = abs(row["EMA10"] - row["EMA20"])
+        limite_colisao = preco_atual * 0.0001
+
+        print(f"🔔 {row['timestamp']} | Entrada validada com 6 sinais ou 5+2 extras!")
+
+        if diferenca_ema < limite_colisao:
+            print(f"🚫 Entrada bloqueada ❌")
+            return None
         else:
-            sinais.append(0)
+            direcao = "Buy" if row["EMA10"] > row["EMA20"] else "Sell"
+            print(f"✅ Entrada confirmada! {direcao}")
+            return direcao
     else:
-        sinais.append(0)
+        print(f"🔎 {row['timestamp']} | Apenas {total_confirmados}/9 sinais confirmados | Entrada bloqueada ❌")
+        return None
 
-    # 5. RSI <30 ou >70
-    sinais.append(1 if df["RSI"].iloc[-1] < 30 else (-1 if df["RSI"].iloc[-1] > 70 else 0))
+def colocar_sl_tp(symbol, lado, preco_entrada, quantidade):
+    preco_sl = preco_entrada * 0.997  # SL de -0.3%
+    preco_tp = preco_entrada * 1.015  # TP de +1.5%
 
-    # 6. Volume atual maior que volume médio
-    sinais.append(1 if df["volume"].iloc[-1] > df["volume_medio"].iloc[-1] else (-1 if df["volume"].iloc[-1] < df["volume_medio"].iloc[-1] else 0))
+    for tentativa in range(5):
+        try:
+            session.place_order(
+                category="linear",
+                symbol=symbol,
+                side="Sell" if lado == "Buy" else "Buy",
+                orderType="Stop",
+                qty=quantidade,
+                price=round(preco_sl, 3),
+                triggerPrice=round(preco_sl, 3),
+                triggerBy="LastPrice",
+                reduceOnly=True,
+                isIsolated=True
+            )
+            session.place_order(
+                category="linear",
+                symbol=symbol,
+                side="Sell" if lado == "Buy" else "Buy",
+                orderType="Limit",
+                qty=quantidade,
+                price=round(preco_tp, 3),
+                reduceOnly=True,
+                isIsolated=True
+            )
+            print(f"🎯 SL e TP colocados com sucesso!")
+            return
+        except Exception as e:
+            print(f"⚠️ Erro ao colocar SL/TP (tentativa {tentativa+1}): {e}")
+            time.sleep(2)
 
-    # Você pode adicionar mais indicadores aqui, sempre 1, -1 ou 0
-    # Exemplo: Momentum, Bollinger Bands, Stochastic, etc.
-    # Por simplicidade, vamos repetir os primeiros para completar 12 sinais:
-    sinais += sinais[:6]  # duplicando os primeiros para ter 12
-
-    return sinais
-
-def avaliar_sinais(sinais):
-    # Conta os sinais positivos e negativos
-    compra = sinais.count(1)
-    venda = sinais.count(-1)
-
-    # Critério: 5 sinais fortes (mesmo lado)
-    # Ou 4 sinais fortes + 1 extra (mesmo lado)
-    if compra >= 5:
-        return "compra"
-    if venda >= 5:
-        return "venda"
-
-    if compra == 4 and sinais.count(1) >= 5:
-        return "compra"
-    if venda == 4 and sinais.count(-1) >= 5:
-        return "venda"
-
-    return "neutro"
-
-def enviar_ordem(symbol, lado, quantidade_usdt):
+def enviar_ordem(symbol, lado):
     try:
-        preco = float(session.get_mark_price(symbol=symbol)["result"]["mark_price"])
-        quantidade = quantidade_usdt / preco
+        dados_ticker = session.get_tickers(category="linear", symbol=symbol)
+        preco_atual = float(dados_ticker['result']['list'][0]['lastPrice'])
+        quantidade = round(quantidade_usdt / preco_atual, 3)
 
-        print(f"Enviando ordem {lado.upper()} de {quantidade:.6f} {symbol} a preço {preco:.4f}")
+        print(f"📦 Tentando enviar ordem:")
+        print(f"    ➤ Par: {symbol}")
+        print(f"    ➤ Direção: {lado}")
+        print(f"    ➤ Preço atual: {preco_atual}")
+        print(f"    ➤ Quantidade calculada: {quantidade}")
 
-        # Exemplo de ordem de mercado (spot)
-        order = session.place_active_order(
+        if quantidade <= 0:
+            print("🚫 Quantidade inválida! Ordem não enviada.")
+            return
+
+        session.set_leverage(category="linear", symbol=symbol, buyLeverage=10, sellLeverage=10)
+
+        response = session.place_order(
+            category="linear",
             symbol=symbol,
-            side="Buy" if lado == "compra" else "Sell",
-            order_type="Market",
+            side=lado,
+            orderType="Market",
             qty=quantidade,
-            time_in_force="GoodTillCancel",
-            take_profit=round(preco * 1.015 if lado == "compra" else preco * 0.985, 6),
-            stop_loss=round(preco * 0.997 if lado == "compra" else preco * 1.003, 6),
-            reduce_only=False,
-            close_on_trigger=False,
+            reduceOnly=False,
+            isIsolated=True
         )
-        print(f"Ordem enviada: {order}")
+
+        print(f"🚀 Ordem {lado} executada com sucesso!")
+        colocar_sl_tp(symbol, lado, preco_atual, quantidade)
+
     except Exception as e:
-        print(f"Erro ao enviar ordem: {e}")
+        print(f"🚨 Erro ao enviar ordem: {e}")
+        time.sleep(1)
 
-def main():
-    while True:
-        for symbol in symbols:
-            df = fetch_candles(symbol, interval)
+# === Loop Principal ===
+while True:
+    inicio = time.time()
+    for symbol in symbols:
+        try:
+            df = fetch_candles(symbol)
             df = calcular_indicadores(df)
-            sinais = gerar_sinais(df)
-            decisao = avaliar_sinais(sinais)
-
-            print(f"{symbol}: sinais={sinais}, decisão={decisao}")
-
-            if decisao in ["compra", "venda"]:
-                enviar_ordem(symbol, decisao, quantidade_usdt)
+            direcao = verificar_entrada(df)
+            if direcao:
+                enviar_ordem(symbol, direcao)
+            else:
+                print(f"🔹 {symbol} sem entrada confirmada...")
+        except Exception as e:
+            print(f"🚨 Erro geral no processamento de {symbol}: {e}")
             time.sleep(1)
-        print("Ciclo finalizado. Aguardando próximo ciclo...")
-        time.sleep(30)
-
-if __name__ == "__main__":
-    main()
+    tempo_execucao = time.time() - inicio
+    if tempo_execucao < 1:
+        time.sleep(1 - tempo_execucao)
