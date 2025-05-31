@@ -1,80 +1,81 @@
 import os
 import time
-from pybit.unified_trading import HTTP
 import pandas as pd
+from pybit.unified_trading import HTTP
+from datetime import datetime, timedelta
 
-# Pegue suas keys da testnet nos .env ou configure aqui direto:
-API_KEY = os.getenv("BYBIT_API_KEY") or "sua_api_key_testnet"
-API_SECRET = os.getenv("BYBIT_API_SECRET") or "seu_api_secret_testnet"
+# Carregar variáveis ambiente (se usar .env)
+from dotenv import load_dotenv
+load_dotenv()
 
-# Criar sessão testnet - importante testnet=True para usar ambiente de teste
-session = HTTP(api_key=API_KEY, api_secret=API_SECRET, testnet=True)
+# Configurações API
+api_key = os.getenv("BYBIT_API_KEY")
+api_secret = os.getenv("BYBIT_API_SECRET")
+session = HTTP(api_key=api_key, api_secret=api_secret, testnet=True)
 
-PAIR = "BTCUSDT"
-CATEGORY = "linear"
-INTERVAL = "1"  # 1 minuto
-QTY = 0.01  # quantidade a operar
+PAIRS = ["DOGEUSDT"]  # Pode adicionar mais pares
+INTERVAL = "1"        # 1 minuto candles
 
-def get_latest_candle():
-    """Busca o último candle de 1min."""
-    response = session.get_kline(
-        category=CATEGORY,
-        symbol=PAIR,
-        interval=INTERVAL,
-        limit=1
-    )
-    data = response["result"]["list"][0]
-    df = pd.DataFrame([data], columns=["timestamp", "open", "high", "low", "close", "volume", "turnover"])
-    df[["open","high","low","close","volume"]] = df[["open","high","low","close","volume"]].astype(float)
+# Função para obter candles 1m recentes (limit=50)
+def obter_candles(symbol, interval="1", limit=50):
+    params = {
+        "category": "linear",
+        "symbol": symbol,
+        "interval": interval,
+        "limit": limit
+    }
+    res = session.get_kline(**params)
+    candles = res["result"]["list"]
+    df = pd.DataFrame(candles, columns=["timestamp", "open", "high", "low", "close", "volume", "turnover"])
+    df["timestamp"] = pd.to_datetime(df["timestamp"].astype(int), unit='ms')
+    for col in ["open", "high", "low", "close", "volume"]:
+        df[col] = df[col].astype(float)
     return df
 
+# Detecta martelo simples (exemplo)
 def padrao_vela_bullish(df):
-    """Detecta padrão bullish simples no último candle."""
+    if len(df) < 2:
+        return False
     corpo = abs(df['close'].iloc[-1] - df['open'].iloc[-1])
     sombra_inferior = df['open'].iloc[-1] - df['low'].iloc[-1] if df['close'].iloc[-1] > df['open'].iloc[-1] else df['close'].iloc[-1] - df['low'].iloc[-1]
     sombra_superior = df['high'].iloc[-1] - max(df['open'].iloc[-1], df['close'].iloc[-1])
     martelo = sombra_inferior > corpo * 2 and sombra_superior < corpo
     return martelo
 
-def enviar_ordem_buy(qty, take_profit, stop_loss):
-    """Enviar ordem Market Buy com TP e SL"""
+# Função para enviar ordem (corrigida)
+def enviar_ordem(session, symbol, side, qty, tp, sl):
     try:
-        ordem = session.place_active_order(
-            category=CATEGORY,
-            symbol=PAIR,
-            side="Buy",
+        resp = session.place_order(
+            category="linear",
+            symbol=symbol,
+            side=side,            # "Buy" ou "Sell"
             order_type="Market",
-            qty=qty,
-            time_in_force="GoodTillCancel",
-            take_profit=take_profit,
-            stop_loss=stop_loss,
-            reduce_only=False,
-            close_on_trigger=False
+            qty=str(qty),
+            take_profit=str(tp),
+            stop_loss=str(sl),
+            time_in_force="GoodTillCancel"
         )
-        print("✅ Ordem enviada:", ordem)
+        print(f"✅ Ordem enviada: {side} {qty} {symbol} TP={tp} SL={sl}")
+        print("Resposta da API:", resp)
     except Exception as e:
-        print("❌ Erro ao enviar ordem:", e)
+        print(f"❌ Erro ao enviar ordem: {e}")
 
 def main():
     while True:
-        try:
-            df = get_latest_candle()
-            print(f"Último candle: open={df['open'].iloc[-1]}, close={df['close'].iloc[-1]}, low={df['low'].iloc[-1]}, high={df['high'].iloc[-1]}")
-
-            # Se padrão bullish detectado, entra buy
+        for pair in PAIRS:
+            print(f"\n⏳ Analisando {pair} - {datetime.utcnow()} UTC")
+            df = obter_candles(pair)
             if padrao_vela_bullish(df):
-                preco_entrada = df['close'].iloc[-1]
-                tp = preco_entrada * 1.005  # TP +0.5%
-                sl = preco_entrada * 0.995  # SL -0.5%
-                print(f"Sinal BUY detectado - Entrando com QTY {QTY}, TP {tp:.2f}, SL {sl:.2f}")
-                enviar_ordem_buy(QTY, take_profit=tp, stop_loss=sl)
+                preco_entrada = df["close"].iloc[-1]
+                qty = 10  # Ajuste quantidade conforme saldo/testnet
+                tp = preco_entrada * 1.005  # +0.5% TP
+                sl = preco_entrada * 0.995  # -0.5% SL
+                print(f"Sinal BUY detectado em {pair} - Preço: {preco_entrada:.6f}")
+                enviar_ordem(session, pair, "Buy", qty, tp, sl)
             else:
-                print("Nenhum sinal de compra detectado.")
-
-        except Exception as e:
-            print("Erro geral no loop:", e)
-
-        time.sleep(60)  # espera 1 minuto
+                print(f"Sem sinal para {pair} no momento.")
+        print("Aguardando 60 segundos para próxima análise...\n")
+        time.sleep(60)
 
 if __name__ == "__main__":
     main()
