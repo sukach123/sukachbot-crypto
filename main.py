@@ -85,7 +85,9 @@ def verificar_entrada(df):
         extra_2
     ]
 
-    total_confirmados = sum(sinais_fortes) + sum(sinais_extras)
+    total_fortes = sum(sinais_fortes)
+    total_extras = sum(sinais_extras)
+    total_confirmados = total_fortes + total_extras
 
     print(f"\n📊 Diagnóstico de sinais em {row['timestamp']}")
     print(f"📌 EMA10 vs EMA20: {sinal_1}")
@@ -97,22 +99,19 @@ def verificar_entrada(df):
     print(f"📌 Não lateral: {sinal_7}")
     print(f"📌 Extra: Vela anterior de alta: {extra_1}")
     print(f"📌 Extra: Pequeno pavio superior: {extra_2}")
-    print(f"✔️ Total: {sum(sinais_fortes)} fortes + {sum(sinais_extras)} extras = {total_confirmados}/9")
+    print(f"✔️ Total: {total_fortes} fortes + {total_extras} extras = {total_confirmados}/9")
 
-    if sum(sinais_fortes) >= 6 or (sum(sinais_fortes) == 5 and sum(sinais_extras) >= 2):
-        preco_atual = row["close"]
-        diferenca_ema = abs(row["EMA10"] - row["EMA20"])
-        limite_colisao = preco_atual * 0.0001
-
-        print(f"🔔 {row['timestamp']} | Entrada validada com 6 sinais ou 5+2 extras!")
-
-        if diferenca_ema < limite_colisao:
-            print(f"🚫 Entrada bloqueada ❌")
-            return None
-        else:
-            direcao = "Buy" if row["EMA10"] > row["EMA20"] else "Sell"
-            print(f"✅ Entrada confirmada! {direcao}")
-            return direcao
+    # Condição de entrada atualizada:
+    if total_fortes >= 5:
+        print(f"🔔 {row['timestamp']} | Entrada validada com 5 ou mais sinais fortes!")
+        direcao = "Buy" if row["EMA10"] > row["EMA20"] else "Sell"
+        print(f"✅ Entrada confirmada! {direcao}")
+        return direcao
+    elif total_fortes == 4 and total_extras >= 1:
+        print(f"🔔 {row['timestamp']} | Entrada validada com 4 fortes + 1 ou mais extras!")
+        direcao = "Buy" if row["EMA10"] > row["EMA20"] else "Sell"
+        print(f"✅ Entrada confirmada! {direcao}")
+        return direcao
     else:
         print(f"🔎 {row['timestamp']} | Apenas {total_confirmados}/9 sinais confirmados | Entrada bloqueada ❌")
         return None
@@ -155,9 +154,7 @@ def enviar_ordem(symbol, lado):
     try:
         dados_ticker = session.get_tickers(category="linear", symbol=symbol)
         preco_atual = float(dados_ticker['result']['list'][0]['lastPrice'])
-        quantidade = quantidade_usdt / preco_atual
-        quantidade = max(quantidade, 0.001)  # mínimo permitido na Bybit
-        quantidade = round(quantidade, 3)
+        quantidade = round(quantidade_usdt / preco_atual, 3)
 
         print(f"📦 Tentando enviar ordem:")
         print(f"    ➤ Par: {symbol}")
@@ -202,5 +199,8 @@ while True:
                 print(f"🔹 {symbol} sem entrada confirmada...")
         except Exception as e:
             print(f"🚨 Erro geral no processamento de {symbol}: {e}")
-            time
+            time.sleep(1)
+    tempo_execucao = time.time() - inicio
+    if tempo_execucao < 1:
+        time.sleep(1 - tempo_execucao)
 
