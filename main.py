@@ -155,7 +155,9 @@ def enviar_ordem(symbol, lado):
     try:
         dados_ticker = session.get_tickers(category="linear", symbol=symbol)
         preco_atual = float(dados_ticker['result']['list'][0]['lastPrice'])
-        quantidade = round(quantidade_usdt / preco_atual, 3)
+        quantidade = quantidade_usdt / preco_atual
+        quantidade = max(quantidade, 0.001)  # mínimo permitido na Bybit
+        quantidade = round(quantidade, 3)
 
         print(f"📦 Tentando enviar ordem:")
         print(f"    ➤ Par: {symbol}")
@@ -200,9 +202,5 @@ while True:
                 print(f"🔹 {symbol} sem entrada confirmada...")
         except Exception as e:
             print(f"🚨 Erro geral no processamento de {symbol}: {e}")
-            time.sleep(1)
-    tempo_execucao = time.time() - inicio
-    if tempo_execucao < 1:
-        time.sleep(1 - tempo_execucao)
-
+            time
 
