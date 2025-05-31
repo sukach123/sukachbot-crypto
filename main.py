@@ -1,79 +1,109 @@
-import os
+from pybit import HTTP
 import time
-import pandas as pd
-from pybit.unified_trading import HTTP
-from datetime import datetime, timedelta
+from datetime import datetime
 
-# Carregar variáveis ambiente (se usar .env)
-from dotenv import load_dotenv
-load_dotenv()
+# Configurações API testnet Bybit
+API_KEY = "sua_api_key_aqui"
+API_SECRET = "seu_api_secret_aqui"
 
-# Configurações API
-api_key = os.getenv("BYBIT_API_KEY")
-api_secret = os.getenv("BYBIT_API_SECRET")
-session = HTTP(api_key=api_key, api_secret=api_secret, testnet=True)
+# Conexão com testnet linear futures
+session = HTTP(
+    endpoint="https://api-testnet.bybit.com",
+    api_key=API_KEY,
+    api_secret=API_SECRET,
+    spot=False
+)
 
-PAIRS = ["DOGEUSDT"]  # Pode adicionar mais pares
-INTERVAL = "1"        # 1 minuto candles
+symbol = "DOGEUSDT"
+qty = 10  # quantidade de contratos, ajustar conforme saldo
+tp_percent = 0.004  # 0.4% de Take Profit
+sl_percent = 0.004  # 0.4% de Stop Loss
 
-# Função para obter candles 1m recentes (limit=50)
-def obter_candles(symbol, interval="1", limit=50):
-    params = {
-        "category": "linear",
-        "symbol": symbol,
-        "interval": interval,
-        "limit": limit
-    }
-    res = session.get_kline(**params)
-    candles = res["result"]["list"]
-    df = pd.DataFrame(candles, columns=["timestamp", "open", "high", "low", "close", "volume", "turnover"])
-    df["timestamp"] = pd.to_datetime(df["timestamp"].astype(int), unit='ms')
-    for col in ["open", "high", "low", "close", "volume"]:
-        df[col] = df[col].astype(float)
-    return df
-
-# Detecta martelo simples (exemplo)
-def padrao_vela_bullish(df):
-    if len(df) < 2:
-        return False
-    corpo = abs(df['close'].iloc[-1] - df['open'].iloc[-1])
-    sombra_inferior = df['open'].iloc[-1] - df['low'].iloc[-1] if df['close'].iloc[-1] > df['open'].iloc[-1] else df['close'].iloc[-1] - df['low'].iloc[-1]
-    sombra_superior = df['high'].iloc[-1] - max(df['open'].iloc[-1], df['close'].iloc[-1])
-    martelo = sombra_inferior > corpo * 2 and sombra_superior < corpo
-    return martelo
-
-# Função para enviar ordem (corrigida)
-def enviar_ordem(session, symbol, side, qty, tp, sl):
+def analisar_mercado():
+    """
+    Exemplo simples de análise:
+    - Compra se preço fechar maior que abrir (vela de alta)
+    - Venda se preço fechar menor que abrir (vela de baixa)
+    - Neutro caso contrário
+    """
     try:
-        resp = session.place_order(
+        # Pega o candle mais recente (1 minuto)
+        kline = session.query_kline(symbol=symbol, interval="1", limit=1)
+        candle = kline['result'][0]
+
+        open_price = float(candle['open'])
+        close_price = float(candle['close'])
+
+        if close_price > open_price:
+            return "buy"
+        elif close_price < open_price:
+            return "sell"
+        else:
+            return "neutral"
+
+    except Exception as e:
+        print("Erro na análise de mercado:", e)
+        return "neutral"
+
+def enviar_ordem_buy():
+    try:
+        ticker = session.latest_information_for_symbol(symbol=symbol)
+        last_price = float(ticker['result'][0]['last_price'])
+        tp = round(last_price * (1 + tp_percent), 8)
+        sl = round(last_price * (1 - sl_percent), 8)
+
+        print(f"[{datetime.utcnow()}] Sinal BUY detectado em {symbol} - Preço: {last_price}")
+        print(f"Enviando ordem MARKET Buy: QTY={qty}, TP={tp}, SL={sl}")
+
+        resposta = session.place_active_order(
             category="linear",
             symbol=symbol,
-            side=side,            # "Buy" ou "Sell"
+            side="Buy",
             order_type="Market",
-            qty=str(qty),
+            qty=qty,
             take_profit=str(tp),
             stop_loss=str(sl),
             time_in_force="GoodTillCancel"
         )
-        print(f"✅ Ordem enviada: {side} {qty} {symbol} TP={tp} SL={sl}")
-        print("Resposta da API:", resp)
+        print("Ordem enviada com sucesso:", resposta)
     except Exception as e:
-        print(f"❌ Erro ao enviar ordem: {e}")
+        print("Erro ao enviar ordem BUY:", e)
+
+def enviar_ordem_sell():
+    try:
+        ticker = session.latest_information_for_symbol(symbol=symbol)
+        last_price = float(ticker['result'][0]['last_price'])
+        tp = round(last_price * (1 - tp_percent), 8)
+        sl = round(last_price * (1 + sl_percent), 8)
+
+        print(f"[{datetime.utcnow()}] Sinal SELL detectado em {symbol} - Preço: {last_price}")
+        print(f"Enviando ordem MARKET Sell: QTY={qty}, TP={tp}, SL={sl}")
+
+        resposta = session.place_active_order(
+            category="linear",
+            symbol=symbol,
+            side="Sell",
+            order_type="Market",
+            qty=qty,
+            take_profit=str(tp),
+            stop_loss=str(sl),
+            time_in_force="GoodTillCancel"
+        )
+        print("Ordem enviada com sucesso:", resposta)
+    except Exception as e:
+        print("Erro ao enviar ordem SELL:", e)
 
 def main():
     while True:
-        for pair in PAIRS:
-            print(f"\n⏳ Analisando {pair} - {datetime.utcnow()} UTC")
-            df = obter_candles(pair)
-            if padrao_vela_bullish(df):
-                preco_entrada = df["close"].iloc[-1]
-                qty = 10  # Ajuste quantidade conforme saldo/testnet
-                tp = preco_entrada * 1.005  # +0.5% TP
-                sl = preco_entrada * 0.995  # -0.5% SL
-                print(f"Sinal BUY detectado em {pair} - Preço: {preco_entrada:.6f}")
-                enviar_ordem(session, pair, "Buy", qty, tp, sl)
-            else:
-                print(f"Sem sinal para {pair} no momento.")
+        sinal = analisar_mercado()
+
+        if sinal == "buy":
+            enviar_ordem_buy()
+        elif sinal == "sell":
+            enviar_ordem_sell()
+        else:
+            print(f"[{datetime.utcnow()}] Sinal NEUTRO. Nenhuma ordem enviada.")
+
         print("Aguardando 60 segundos para próxima análise...\n")
         time.sleep(60)
 
