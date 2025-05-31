@@ -1,5 +1,3 @@
-# === SukachBot PRO75 - Agora com TP de 1.5% automático e SL de -0.3% ===
-
 import pandas as pd
 import numpy as np
 from pybit.unified_trading import HTTP
@@ -27,7 +25,6 @@ def fetch_candles(symbol, interval="1"):
         df = df.astype({"open": float, "high": float, "low": float, "close": float, "volume": float})
         df["timestamp"] = pd.to_datetime(pd.to_numeric(df["timestamp"]), unit="ms", utc=True)
 
-        # Verificar se candle está atrasado
         now = datetime.now(timezone.utc)
         diff = now - df["timestamp"].iloc[-1]
         atraso = int(diff.total_seconds())
@@ -72,20 +69,20 @@ def verificar_entrada(df):
     sinal_7 = nao_lateral
 
     sinais_fortes = [
-        sinal_1,  # EMA10 vs EMA20
-        sinal_2,  # MACD > SINAL
-        sinal_3,  # CCI > 0
-        sinal_4,  # ADX > 20
-        sinal_7   # Não lateral
+        sinal_1,
+        sinal_2,
+        sinal_3,
+        sinal_4,
+        sinal_7
     ]
 
     extra_1 = prev["close"] > prev["open"]
     extra_2 = (row["high"] - row["close"]) < corpo
     sinais_extras = [
-        sinal_5,  # volume_explosivo
-        sinal_6,  # corpo_grande
-        extra_1,  # vela anterior de alta
-        extra_2   # pavio pequeno
+        sinal_5,
+        sinal_6,
+        extra_1,
+        extra_2
     ]
 
     total_confirmados = sum(sinais_fortes) + sum(sinais_extras)
