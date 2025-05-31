@@ -1,191 +1,94 @@
-# main.py completo com lógica PRO, estrutura de candle, indicadores e controle de risco
-from flask import Flask
-import os
-import time
-import random
-import threading
-import numpy as np
+# === SukachBot PRO75 - Com TP, SL dinâmico com ATR, quantidade ajustável e trailing stop ===
+
 import pandas as pd
+import numpy as np
 from pybit.unified_trading import HTTP
-from datetime import datetime
-import requests
+import time
+import os
+from dotenv import load_dotenv
+from datetime import datetime, timezone
 
-app = Flask(__name__)
+load_dotenv()
 
-api_key = os.getenv("BYBIT_API_KEY")
-api_secret = os.getenv("BYBIT_API_SECRET")
+API_KEY = os.getenv("API_KEY")
+API_SECRET = os.getenv("API_SECRET")
+SESSION = HTTP(api_key=API_KEY, api_secret=API_SECRET, testnet=True)
 
-session = HTTP(api_key=api_key, api_secret=api_secret, testnet=False)
-historico_resultados = []
+PERIODO_ATR = 14
+MULT_ATR = 1.8
+QUANTIDADE = 0.02  # Quantidade de ETH ou BTC por operação
+TP_PERCENTUAL = 0.015  # 1.5%
+TRAILING_ATIVO = True
+TRAILING_OFFSET = 0.005  # 0.5%
 
-# === indicadores integrados ===
-def analisar_indicadores(df):
-    sinais = []
-    df["EMA_10"] = df["close"].ewm(span=10).mean()
-    df["EMA_20"] = df["close"].ewm(span=20).mean()
-    if df["EMA_10"].iloc[-1] > df["EMA_20"].iloc[-1]:
-        sinais.append("EMA")
-    delta = df["close"].diff()
-    ganho = delta.where(delta > 0, 0)
-    perda = -delta.where(delta < 0, 0)
-    media_ganho = ganho.rolling(14).mean()
-    media_perda = perda.rolling(14).mean()
-    rs = media_ganho / media_perda
-    rsi = 100 - (100 / (1 + rs))
-    if rsi.iloc[-1] < 30:
-        sinais.append("RSI")
-    exp1 = df["close"].ewm(span=12).mean()
-    exp2 = df["close"].ewm(span=26).mean()
-    macd = exp1 - exp2
-    signal = macd.ewm(span=9).mean()
-    if macd.iloc[-1] > signal.iloc[-1]:
-        sinais.append("MACD")
-    df["CCI"] = (df["close"] - df["close"].rolling(20).mean()) / (0.015 * df["close"].rolling(20).std())
-    if df["CCI"].iloc[-1] > 100:
-        sinais.append("CCI")
-    df["ADX"] = df["close"].rolling(14).std()
-    if df["ADX"].iloc[-1] > df["ADX"].mean():
-        sinais.append("ADX")
-    return sinais
+# === Função para calcular ATR ===
+def calcular_atr(df, periodo=PERIODO_ATR):
+    df['H-L'] = df['high'] - df['low']
+    df['H-PC'] = abs(df['high'] - df['close'].shift(1))
+    df['L-PC'] = abs(df['low'] - df['close'].shift(1))
+    df['TR'] = df[['H-L', 'H-PC', 'L-PC']].max(axis=1)
+    df['ATR'] = df['TR'].rolling(window=periodo).mean()
+    return df
 
-# === estrutura candle integrada ===
-def detectar_direcao_candle(candle_anterior, candle_atual):
-    open_price = float(candle_atual[1])
-    close_price = float(candle_atual[4])
-    if abs(close_price - open_price) < 0.0001:
-        return "Neutro"
-    elif close_price > open_price:
-        return "Alta"
-    else:
-        return "Baixa"
-
-# === função corrigida e reforçada para SL ===
-def aplicar_tp_sl(par, preco_entrada):
-    take_profit = round(preco_entrada * 1.02, 4)
-    stop_loss = round(preco_entrada * 0.997, 4)
-    trailing_ativado = False
-    sucesso = False
-    for tentativa in range(3):
-        try:
-            posicoes = session.get_positions(category="linear", symbol=par)["result"]["list"]
-            if posicoes:
-                preco_posicao = float(posicoes[0].get("entryPrice", preco_entrada))
-                atual = float(posicoes[0].get("markPrice", preco_entrada))
-                lucro_atual = (atual - preco_posicao) / preco_posicao
-                if lucro_atual > 0.006:
-                    novo_sl = round(atual * 0.997, 4)
-                    stop_loss = max(stop_loss, novo_sl)
-                    trailing_ativado = True
-                if stop_loss >= preco_posicao:
-                    stop_loss = round(preco_posicao - 0.0001, 4)
-                response = session.set_trading_stop(
-                    category="linear",
-                    symbol=par,
-                    takeProfit=take_profit,
-                    stopLoss=stop_loss
-                )
-                if response.get("retCode") == 0:
-                    print(f"✅ TP/SL definidos: TP={take_profit} | SL={stop_loss} {'(Trailing SL ativo)' if trailing_ativado else ''}")
-                    sucesso = True
-                    break
-                else:
-                    print(f"Erro ao aplicar TP/SL: {response}")
-        except Exception as e:
-            print(f"Falha ao aplicar TP/SL (tentativa {tentativa+1}): {e}")
-            time.sleep(1)
-    if not sucesso:
-        print("⚠️ Não foi possível aplicar TP/SL após 3 tentativas. Nova tentativa em 15 segundos...")
-        threading.Timer(15, aplicar_tp_sl, args=(par, preco_entrada)).start()
-
-# === função de validação da quantidade com precisão ===
-def ajustar_quantidade(par, usdt_alvo, alavancagem, preco_atual):
+# === Calcular SL dinâmico com base no ATR ===
+def obter_sl_dinamico(symbol, lado, preco_atual):
     try:
-        info = session.get_instruments_info(category="linear", symbol=par)
-        filtro = info["result"]["list"][0]["lotSizeFilter"]
-        step = float(filtro["qtyStep"])
-        min_qty = float(filtro["minOrderQty"])
-        qty_bruta = (usdt_alvo * alavancagem) / preco_atual
-        precisao = abs(int(round(-np.log10(step), 0)))
-        qty_final = round(qty_bruta, precisao)
-        if qty_final < min_qty:
-            print(f"❌ Quantidade {qty_final} abaixo do mínimo permitido {min_qty} para {par}")
-            return None
-        return qty_final
+        candles = SESSION.get_kline(
+            category="linear",
+            symbol=symbol,
+            interval="1",
+            limit=PERIODO_ATR + 1
+        )
+
+        df = pd.DataFrame(candles['result']['list'], columns=[
+            'timestamp', 'open', 'high', 'low', 'close', 'volume', '_1', '_2'
+        ])
+        df[['high', 'low', 'close']] = df[['high', 'low', 'close']].astype(float)
+        df = calcular_atr(df)
+
+        atr = df.iloc[-1]['ATR']
+        if lado == "Buy":
+            sl = round(preco_atual - (atr * MULT_ATR), 3)
+        else:
+            sl = round(preco_atual + (atr * MULT_ATR), 3)
+
+        return sl
     except Exception as e:
-        print(f"Erro ao ajustar quantidade: {e}")
+        print(f"Erro ao calcular SL dinâmico: {e}")
         return None
 
-# === monitorar_mercado ===
-def monitorar_mercado():
-    while True:
-        try:
-            pares = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "DOGEUSDT", "MATICUSDT", "AVAXUSDT", "LINKUSDT", "TONUSDT"]
-            par = random.choice(pares)
-            candles = session.get_kline(category="linear", symbol=par, interval="1", limit=50)["result"]["list"]
-            if len(candles) < 30:
-                print(f"⚠️ Poucos candles para {par}, a saltar...")
-                time.sleep(2)
-                continue
-            preco_atual = float(candles[-1][4])
-            df = pd.DataFrame(candles, columns=["timestamp", "open", "high", "low", "close", "volume", "turnover"])
-            df[["open", "high", "low", "close"]] = df[["open", "high", "low", "close"]].astype(float)
-            sinais = analisar_indicadores(df)
-            print(f"📊 Indicadores detectados para {par}: {sinais}")
-            if len(sinais) < 4 or len(sinais) > 12:
-                print("⛔ Número de sinais fora do intervalo 4-12. Ignorado.")
-                continue
-            essenciais = ["RSI", "EMA", "MACD", "CCI", "ADX"]
-            if not any(s in sinais for s in essenciais):
-                print("⛔ Nenhum indicador essencial presente. Ignorado.")
-                continue
-            direcao = detectar_direcao_candle(candles[-2], candles[-1])
-            print(f"🕯️ Direção do candle atual: {direcao}")
-            if direcao == "Neutro":
-                print("⚠️ Vela neutra detectada. Ignorado.")
-                continue
-            wallet = session.get_wallet_balance(accountType="UNIFIED")
-            coins = wallet.get("result", {}).get("list", [])[0].get("coin", [])
-            saldo_total = 0
-            for c in coins:
-                if c.get("coin") == "USDT":
-                    saldo_total = float(c.get("equity", "0"))
-                    break
-            print(f"💰 Saldo USDT aprovado: {saldo_total}")
-            if saldo_total < 3:
-                print("❌ Saldo insuficiente — não vai entrar.")
-                continue
-            qty = ajustar_quantidade(par, 3, 2, preco_atual)
-            if qty is None:
-                continue
-            session.place_order(
-                category="linear",
-                symbol=par,
-                side="Buy" if direcao == "Alta" else "Sell",
-                orderType="Market",
-                qty=qty,
-                leverage=2
-            )
-            historico_resultados.append(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | {par} | Entrada {direcao} | Qty={qty}")
-            print(f"🚀 ENTRADA REAL: {par} | Qty: {qty} | Preço: {preco_atual} | Direção: {direcao}")
-            aplicar_tp_sl(par, preco_atual)
-        except Exception as e:
-            print(f"Erro no monitoramento: {e}")
-        time.sleep(2)
+# === Enviar ordem com SL, TP e Trailing Stop ===
+def enviar_ordem(symbol, lado, preco_atual):
+    sl = obter_sl_dinamico(symbol, lado, preco_atual)
+    if lado == "Buy":
+        tp = round(preco_atual * (1 + TP_PERCENTUAL), 3)
+    else:
+        tp = round(preco_atual * (1 - TP_PERCENTUAL), 3)
 
-# === manter ativo ===
-def manter_ativo():
-    def pingar():
-        while True:
-            try:
-                requests.get("https://sukachbot-crypto-production.up.railway.app/")
-                print("🔄 Ping enviado para manter online")
-            except:
-                pass
-            time.sleep(300)
-    threading.Thread(target=pingar, daemon=True).start()
+    ordem = {
+        "category": "linear",
+        "symbol": symbol,
+        "side": "Buy" if lado == "Buy" else "Sell",
+        "orderType": "Market",
+        "qty": QUANTIDADE,
+        "takeProfit": tp,
+        "stopLoss": sl,
+    }
 
-if __name__ == "__main__":
-    manter_ativo()
-    threading.Thread(target=monitorar_mercado, daemon=True).start()
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
+    if TRAILING_ATIVO:
+        ordem["trailingStop"] = round(preco_atual * TRAILING_OFFSET, 3)
+
+    print(f"Enviando ordem: {ordem}")
+    # Descomente para executar de verdade:
+    # resposta = SESSION.place_order(**ordem)
+    # print(resposta)
+
+# Exemplo de chamada
+# enviar_ordem("ETHUSDT", "Buy", 2200.0)  # Simulação de compra
+
+# Script completo com:
+# - SL dinâmico via ATR (período 14, mult. 1.8)
+# - TP fixo de +1.5%
+# - Trailing Stop opcional
+# - Quantidade ajustável
+
