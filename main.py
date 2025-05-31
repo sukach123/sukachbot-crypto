@@ -1,206 +1,158 @@
-import pandas as pd
-import numpy as np
-from pybit.unified_trading import HTTP
-import time
 import os
+import time
+import pandas as pd
+import ta
+from datetime import datetime
+from pybit.unified_trading import HTTP
 from dotenv import load_dotenv
-from datetime import datetime, timezone
 
 load_dotenv()
 
-# === Configurações ===
-symbols = ["BNBUSDT", "BTCUSDT", "DOGEUSDT", "SOLUSDT", "ADAUSDT", "ETHUSDT"]
-interval = "1"
-api_key = os.getenv("BYBIT_API_KEY")
-api_secret = os.getenv("BYBIT_API_SECRET")
-quantidade_usdt = 5
+# === Sessão Bybit TESTNET ===
+session = HTTP(
+    testnet=True,
+    api_key=os.getenv("API_KEY"),
+    api_secret=os.getenv("API_SECRET")
+)
 
-session = HTTP(api_key=api_key, api_secret=api_secret, testnet=False)
+PAIR = "ADAUSDT"
+INTERVAL = "1"
+USDT_PER_TRADE = 5
+LEVERAGE = 10
+TP_PERCENT = 1.5 / 100
 
-def fetch_candles(symbol, interval="1"):
+def get_klines(symbol, interval="1", limit=100):
     try:
-        data = session.get_kline(category="linear", symbol=symbol, interval=interval, limit=200)
-        candles = data['result']['list']
-        df = pd.DataFrame(candles, columns=["timestamp", "open", "high", "low", "close", "volume", "turnover"])
-        df = df.astype({"open": float, "high": float, "low": float, "close": float, "volume": float})
-        df["timestamp"] = pd.to_datetime(pd.to_numeric(df["timestamp"]), unit="ms", utc=True)
-
-        now = datetime.now(timezone.utc)
-        diff = now - df["timestamp"].iloc[-1]
-        atraso = int(diff.total_seconds())
-        if 60 < atraso < 300:
-            print(f"⚠️ AVISO: Último candle de {symbol} está atrasado {atraso} segundos!")
-
-        return df
-    except Exception as e:
-        print(f"🚨 Erro ao buscar candles de {symbol}: {e}")
-        time.sleep(1)
-        return fetch_candles(symbol)
-
-def calcular_indicadores(df):
-    df["EMA10"] = df["close"].ewm(span=10).mean()
-    df["EMA20"] = df["close"].ewm(span=20).mean()
-    df["MACD"] = df["close"].ewm(span=12).mean() - df["close"].ewm(span=26).mean()
-    df["SINAL"] = df["MACD"].ewm(span=9).mean()
-    df["CCI"] = (df["close"] - df["close"].rolling(20).mean()) / (0.015 * df["close"].rolling(20).std())
-    df["ADX"] = abs(df["high"] - df["low"]).rolling(14).mean()
-    df["ATR"] = (df["high"] - df["low"]).rolling(14).mean()
-    df["volume_medio"] = df["volume"].rolling(20).mean()
-    df["volume_explosivo"] = df["volume"] > 1.3 * df["volume_medio"]
-    return df
-
-def verificar_entrada(df):
-    row = df.iloc[-1]
-    prev = df.iloc[-2]
-    ultimos5 = df.iloc[-5:]
-    ultimos20 = df.iloc[-20:]
-
-    corpo = abs(row["close"] - row["open"])
-    volatilidade = ultimos20["high"].max() - ultimos20["low"].min()
-    media_atr = ultimos20["ATR"].mean()
-    nao_lateral = volatilidade > (2 * media_atr)
-
-    sinal_1 = row["EMA10"] > row["EMA20"] or row["EMA10"] < row["EMA20"]
-    sinal_2 = row["MACD"] > row["SINAL"]
-    sinal_3 = row["CCI"] > 0
-    sinal_4 = row["ADX"] > 20
-    sinal_5 = row["volume_explosivo"]
-    sinal_6 = corpo > ultimos5["close"].max() - ultimos5["low"].min()
-    sinal_7 = nao_lateral
-
-    sinais_fortes = [
-        sinal_1,
-        sinal_2,
-        sinal_3,
-        sinal_4,
-        sinal_7
-    ]
-
-    extra_1 = prev["close"] > prev["open"]
-    extra_2 = (row["high"] - row["close"]) < corpo
-    sinais_extras = [
-        sinal_5,
-        sinal_6,
-        extra_1,
-        extra_2
-    ]
-
-    total_fortes = sum(sinais_fortes)
-    total_extras = sum(sinais_extras)
-    total_confirmados = total_fortes + total_extras
-
-    print(f"\n📊 Diagnóstico de sinais em {row['timestamp']}")
-    print(f"📌 EMA10 vs EMA20: {sinal_1}")
-    print(f"📌 MACD > SINAL: {sinal_2}")
-    print(f"📌 CCI > 0: {sinal_3} (valor: {row['CCI']:.2f})")
-    print(f"📌 ADX > 20: {sinal_4} (valor: {row['ADX']:.2f})")
-    print(f"📌 Volume explosivo: {sinal_5} (volume: {row['volume']:.2f})")
-    print(f"📌 Corpo grande: {sinal_6}")
-    print(f"📌 Não lateral: {sinal_7}")
-    print(f"📌 Extra: Vela anterior de alta: {extra_1}")
-    print(f"📌 Extra: Pequeno pavio superior: {extra_2}")
-    print(f"✔️ Total: {total_fortes} fortes + {total_extras} extras = {total_confirmados}/9")
-
-    # Condição de entrada atualizada:
-    if total_fortes >= 5:
-        print(f"🔔 {row['timestamp']} | Entrada validada com 5 ou mais sinais fortes!")
-        direcao = "Buy" if row["EMA10"] > row["EMA20"] else "Sell"
-        print(f"✅ Entrada confirmada! {direcao}")
-        return direcao
-    elif total_fortes == 4 and total_extras >= 1:
-        print(f"🔔 {row['timestamp']} | Entrada validada com 4 fortes + 1 ou mais extras!")
-        direcao = "Buy" if row["EMA10"] > row["EMA20"] else "Sell"
-        print(f"✅ Entrada confirmada! {direcao}")
-        return direcao
-    else:
-        print(f"🔎 {row['timestamp']} | Apenas {total_confirmados}/9 sinais confirmados | Entrada bloqueada ❌")
-        return None
-
-def colocar_sl_tp(symbol, lado, preco_entrada, quantidade):
-    preco_sl = preco_entrada * 0.997  # SL de -0.3%
-    preco_tp = preco_entrada * 1.015  # TP de +1.5%
-
-    for tentativa in range(5):
-        try:
-            session.place_order(
-                category="linear",
-                symbol=symbol,
-                side="Sell" if lado == "Buy" else "Buy",
-                orderType="Stop",
-                qty=quantidade,
-                price=round(preco_sl, 3),
-                triggerPrice=round(preco_sl, 3),
-                triggerBy="LastPrice",
-                reduceOnly=True,
-                isIsolated=True
-            )
-            session.place_order(
-                category="linear",
-                symbol=symbol,
-                side="Sell" if lado == "Buy" else "Buy",
-                orderType="Limit",
-                qty=quantidade,
-                price=round(preco_tp, 3),
-                reduceOnly=True,
-                isIsolated=True
-            )
-            print(f"🎯 SL e TP colocados com sucesso!")
-            return
-        except Exception as e:
-            print(f"⚠️ Erro ao colocar SL/TP (tentativa {tentativa+1}): {e}")
-            time.sleep(2)
-
-def enviar_ordem(symbol, lado):
-    try:
-        dados_ticker = session.get_tickers(category="linear", symbol=symbol)
-        preco_atual = float(dados_ticker['result']['list'][0]['lastPrice'])
-        quantidade = round(quantidade_usdt / preco_atual, 3)
-
-        print(f"📦 Tentando enviar ordem:")
-        print(f"    ➤ Par: {symbol}")
-        print(f"    ➤ Direção: {lado}")
-        print(f"    ➤ Preço atual: {preco_atual}")
-        print(f"    ➤ Quantidade calculada: {quantidade}")
-
-        if quantidade <= 0:
-            print("🚫 Quantidade inválida! Ordem não enviada.")
-            return
-
-        session.set_leverage(category="linear", symbol=symbol, buyLeverage=10, sellLeverage=10)
-
-        response = session.place_order(
+        response = session.get_kline(
             category="linear",
             symbol=symbol,
-            side=lado,
-            orderType="Market",
-            qty=quantidade,
-            reduceOnly=False,
-            isIsolated=True
+            interval=interval,
+            limit=limit
+        )
+        df = pd.DataFrame(response['result']['list'])
+        df.columns = ['timestamp','open','high','low','close','volume','turnover']
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+        df = df.astype({
+            "open": float,
+            "high": float,
+            "low": float,
+            "close": float,
+            "volume": float
+        })
+        df.sort_values("timestamp", inplace=True)
+        df.reset_index(drop=True, inplace=True)
+        return df
+    except Exception as e:
+        print("Erro ao buscar candles:", e)
+        return None
+
+def avaliar_sinais(df):
+    sinais_fortes = 0
+    sinais_extras = 0
+
+    df["EMA10"] = ta.trend.ema_indicator(df["close"], window=10)
+    df["EMA20"] = ta.trend.ema_indicator(df["close"], window=20)
+
+    if df["EMA10"].iloc[-1] > df["EMA20"].iloc[-1]:
+        sinais_fortes += 1
+        print("📌 EMA10 vs EMA20: True")
+    else:
+        print("📌 EMA10 vs EMA20: False")
+
+    corpo = abs(df["close"].iloc[-1] - df["open"].iloc[-1])
+    range_total = df["high"].iloc[-1] - df["low"].iloc[-1]
+    if corpo > 0.7 * range_total:
+        sinais_fortes += 1
+        print("📌 Corpo grande: True")
+    else:
+        print("📌 Corpo grande: False")
+
+    ultimos_closes = df["close"].iloc[-5:]
+    if not (ultimos_closes.max() - ultimos_closes.min()) < 0.003 * ultimos_closes.mean():
+        sinais_fortes += 1
+        print("📌 Não lateral: True")
+    else:
+        print("📌 Não lateral: False")
+
+    if df["close"].iloc[-2] > df["open"].iloc[-2]:
+        sinais_extras += 1
+        print("📌 Extra: Vela anterior de alta: True")
+    else:
+        print("📌 Extra: Vela anterior de alta: False")
+
+    pavio_superior = df["high"].iloc[-1] - max(df["close"].iloc[-1], df["open"].iloc[-1])
+    if pavio_superior < 0.25 * (df["high"].iloc[-1] - df["low"].iloc[-1]):
+        sinais_extras += 1
+        print("📌 Extra: Pequeno pavio superior: True")
+    else:
+        print("📌 Extra: Pequeno pavio superior: False")
+
+    total = sinais_fortes + sinais_extras
+    print(f"\n✔️ Total: {sinais_fortes} fortes + {sinais_extras} extras = {total}/9")
+
+    if sinais_fortes >= 5 or (sinais_fortes == 4 and sinais_extras >= 1):
+        print(f"\n🔔 {df['timestamp'].iloc[-1]} | Entrada validada com {sinais_fortes} fortes + {sinais_extras} extras!")
+        return True
+    return False
+
+def calcular_quantidade(symbol, usdt, preco):
+    try:
+        qty = round(usdt / preco, 3)
+        return qty
+    except:
+        return None
+
+def enviar_ordem_buy(symbol, preco_entrada):
+    qty = calcular_quantidade(symbol, USDT_PER_TRADE, preco_entrada)
+    if not qty:
+        print("Erro ao calcular quantidade.")
+        return
+
+    try:
+        print(f"\n📦 Tentando enviar ordem:\n\n    ➤ Par: {symbol}\n    ➤ Direção: Buy\n    ➤ Preço atual: {preco_entrada}\n    ➤ Quantidade calculada: {qty}")
+
+        session.set_leverage(
+            category="linear",
+            symbol=symbol,
+            buyLeverage=LEVERAGE,
+            sellLeverage=LEVERAGE
         )
 
-        print(f"🚀 Ordem {lado} executada com sucesso!")
-        colocar_sl_tp(symbol, lado, preco_atual, quantidade)
+        ordem = session.place_order(
+            category="linear",
+            symbol=symbol,
+            side="Buy",
+            order_type="Market",
+            qty=qty,
+            time_in_force="GoodTillCancel",
+            reduce_only=False
+        )
+
+        ordem_id = ordem['result']['orderId']
+        print(f"✅ Ordem enviada com sucesso! ID: {ordem_id}")
+
+        tp_price = round(preco_entrada * (1 + TP_PERCENT), 4)
+
+        session.set_take_profit(
+            category="linear",
+            symbol=symbol,
+            takeProfit=tp_price,
+            positionIdx=1
+        )
+        print(f"🎯 Take Profit colocado em: {tp_price}")
 
     except Exception as e:
-        print(f"🚨 Erro ao enviar ordem: {e}")
-        time.sleep(1)
+        print("🚨 Erro ao enviar ordem:", e)
 
-# === Loop Principal ===
-while True:
-    inicio = time.time()
-    for symbol in symbols:
-        try:
-            df = fetch_candles(symbol)
-            df = calcular_indicadores(df)
-            direcao = verificar_entrada(df)
-            if direcao:
-                enviar_ordem(symbol, direcao)
-            else:
-                print(f"🔹 {symbol} sem entrada confirmada...")
-        except Exception as e:
-            print(f"🚨 Erro geral no processamento de {symbol}: {e}")
-            time.sleep(1)
-    tempo_execucao = time.time() - inicio
-    if tempo_execucao < 1:
-        time.sleep(1 - tempo_execucao)
+def main():
+    while True:
+        df = get_klines(PAIR, interval=INTERVAL, limit=100)
+        if df is not None:
+            if avaliar_sinais(df):
+                preco_entrada = df["close"].iloc[-1]
+                enviar_ordem_buy(PAIR, preco_entrada)
+        time.sleep(60)
+
+if __name__ == "__main__":
+    main()
 
