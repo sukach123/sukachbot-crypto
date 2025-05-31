@@ -1,74 +1,75 @@
-import time
-import os
-import pandas as pd
 from pybit.unified_trading import HTTP
-from datetime import datetime
+import time
+import datetime
+import pytz
 
-# Configurar API (usar suas keys e testnet=True)
-api_key = os.getenv("BYBIT_API_KEY")
-api_secret = os.getenv("BYBIT_API_SECRET")
-
-session = HTTP(api_key=api_key, api_secret=api_secret, testnet=True)
-
+# Configurações
+API_KEY = "SUA_API_KEY"
+API_SECRET = "SEU_API_SECRET"
 PAIR = "BTCUSDT"
-QTY = 0.01
-TP_PERCENT = 0.005  # 0.5% take profit
-SL_PERCENT = 0.003  # 0.3% stop loss
-INTERVAL = "1"
+QTY = 0.01  # quantidade para ordem
+TP_PERC = 0.015  # 1.5% take profit
+SL_PERC = 0.003  # 0.3% stop loss
+INTERVALO = 60  # segundos
 
-def obter_candles(symbol, interval="1", limit=10):
-    resp = session.get_kline(
-        category="linear",
-        symbol=symbol,
-        interval=interval,
-        limit=limit
-    )
-    data = resp["result"]["list"]
-    df = pd.DataFrame(data, columns=["timestamp", "open", "high", "low", "close", "volume", "turnover"])
-    df["timestamp"] = pd.to_datetime(df["timestamp"].astype(int), unit='ms')
-    df[["open", "high", "low", "close", "volume"]] = df[["open", "high", "low", "close", "volume"]].astype(float)
-    return df
+# Sessão Bybit (Testnet)
+session = HTTP(
+    testnet=True,
+    api_key=API_KEY,
+    api_secret=API_SECRET,
+)
 
-def eh_candle_bullish(df):
-    # Simples: close > open no último candle
-    candle = df.iloc[-1]
-    return candle["close"] > candle["open"]
+def analisar_mercado(symbol):
+    """
+    Simples análise: entra sempre que rodar (só para fins de teste).
+    Aqui você pode incluir lógica real com indicadores.
+    """
+    try:
+        ticker = session.get_ticker(category="linear", symbol=symbol)
+        price = float(ticker["result"]["list"][0]["lastPrice"])
+        print(f"\n🔎 Sinal BUY detectado em {symbol} - Preço: {price}")
+        return True, price
+    except Exception as e:
+        print(f"Erro ao buscar preço: {e}")
+        return False, 0
 
 def colocar_ordem_compra(symbol, qty, tp_perc, sl_perc):
     try:
-        # Buscar preço atual (last price)
         ticker = session.get_ticker(category="linear", symbol=symbol)
-        price = float(ticker["result"]["lastPrice"])
+        price = float(ticker["result"]["list"][0]["lastPrice"])
 
         tp_price = price * (1 + tp_perc)
         sl_price = price * (1 - sl_perc)
 
-        ordem = session.place_active_order(
+        ordem = session.place_order(
             category="linear",
             symbol=symbol,
             side="Buy",
             order_type="Market",
             qty=qty,
-            time_in_force="GoodTillCancel",
             take_profit=round(tp_price, 8),
-            stop_loss=round(sl_price, 8)
+            stop_loss=round(sl_price, 8),
+            time_in_force="GoodTillCancel"
         )
         print(f"✅ Ordem de COMPRA enviada: {ordem}")
     except Exception as e:
         print(f"❌ Erro ao enviar ordem: {e}")
 
 def main():
-    print("🤖 Iniciando robô testnet Bybit...")
     while True:
-        print(f"\n⏳ Analisando {PAIR} - {datetime.utcnow()} UTC")
-        df = obter_candles(PAIR, INTERVAL, 10)
-        if eh_candle_bullish(df):
-            print(f"🔎 Sinal BUY detectado em {PAIR} - Preço: {df.iloc[-1]['close']}")
-            colocar_ordem_compra(PAIR, QTY, TP_PERCENT, SL_PERCENT)
+        agora = datetime.datetime.now(pytz.UTC)
+        print(f"\n⏳ Analisando {PAIR} - {agora.isoformat()}")
+
+        sinal, preco = analisar_mercado(PAIR)
+
+        if sinal:
+            colocar_ordem_compra(PAIR, QTY, TP_PERC, SL_PERC)
         else:
             print(f"🔎 Sem sinal de compra no momento em {PAIR}.")
-        print("⏰ Aguardando 60 segundos para próxima análise...")
-        time.sleep(60)
+
+        print(f"\n⏰ Aguardando {INTERVALO} segundos para próxima análise...\n")
+        time.sleep(INTERVALO)
 
 if __name__ == "__main__":
     main()
+
