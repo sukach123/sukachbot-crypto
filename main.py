@@ -1,146 +1,71 @@
 import time
-import requests
-import pandas as pd
-from ta.trend import EMAIndicator
 from datetime import datetime, timezone
+from pybit.unified_trading import HTTP
 
-API_KEY = "A_TUA_API_KEY_TESTNET"
-API_SECRET = "A_TUA_API_SECRET_TESTNET"
-TELEGRAM_TOKEN = "7830564079:AAER2NNtWfoF0Nsv94Z_WXdPAXQbdsKdcmk"
-CHAT_ID = "1407960941"
+# === CONFIGURAÇÕES ===
+API_KEY = "SUA_API_KEY_TESTNET"
+API_SECRET = "SUA_API_SECRET_TESTNET"
+BASE_URL = "https://api-testnet.bybit.com"
+PAIR = "BTCUSDT"
+QTY = 0.01  # Quantidade de entrada
+TP_PORC = 0.5   # Take Profit (0.5%)
+SL_PORC = 0.3   # Stop Loss (0.3%)
+INTERVALO = 60  # Tempo entre análises (em segundos)
 
-SYMBOL = "ADAUSDT"
-QTD_USDT = 5
-LEVERAGE = 10
+# === CONEXÃO COM API UNIFICADA (TESTNET) ===
+session = HTTP(
+    api_key=API_KEY,
+    api_secret=API_SECRET,
+    testnet=True
+)
 
-BASE_URL = "https://api-testnet.bybit.com"  # <- Testnet ✅
-
-def enviar_mensagem(texto):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    requests.post(url, json={"chat_id": CHAT_ID, "text": texto, "parse_mode": "Markdown"})
-
-def obter_candles():
-    url = f"{BASE_URL}/v5/market/kline"
-    params = {
-        "category": "linear",
-        "symbol": SYMBOL,
-        "interval": "1",
-        "limit": 200
-    }
-    r = requests.get(url, params=params)
-    df = pd.DataFrame(r.json()["result"]["list"])
-    df.columns = ["timestamp", "open", "high", "low", "close", "volume", "turnover"]
-    df = df.iloc[::-1]
-    df["close"] = df["close"].astype(float)
-    df["open"] = df["open"].astype(float)
-    df["high"] = df["high"].astype(float)
-    df["low"] = df["low"].astype(float)
-    return df
-
-def analisar(df):
-    df["ema10"] = EMAIndicator(df["close"], window=10).ema_indicator()
-    df["ema20"] = EMAIndicator(df["close"], window=20).ema_indicator()
-    
-    ultima = df.iloc[-1]
-    anterior = df.iloc[-2]
-    
-    sinais_fortes = 0
-    extras = 0
-    sinais = []
-
-    if ultima["ema10"] > ultima["ema20"]:
-        sinais_fortes += 1
-        sinais.append("📌 EMA10 vs EMA20: True")
-    else:
-        sinais.append("📌 EMA10 vs EMA20: False")
-    
-    corpo = abs(ultima["close"] - ultima["open"])
-    range_total = ultima["high"] - ultima["low"]
-    if range_total > 0 and corpo / range_total > 0.5:
-        sinais_fortes += 1
-        sinais.append("📌 Corpo grande: True")
-    else:
-        sinais.append("📌 Corpo grande: False")
-    
-    if abs(ultima["close"] - anterior["close"]) > 0.001:
-        sinais_fortes += 1
-        sinais.append("📌 Não lateral: True")
-    else:
-        sinais.append("📌 Não lateral: False")
-
-    # Extras
-    if anterior["close"] > anterior["open"]:
-        extras += 1
-        sinais.append("📌 Extra: Vela anterior de alta: True")
-    else:
-        sinais.append("📌 Extra: Vela anterior de alta: False")
-    
-    pavio_sup = ultima["high"] - max(ultima["close"], ultima["open"])
-    if pavio_sup < 0.001:
-        extras += 1
-        sinais.append("📌 Extra: Pequeno pavio superior: True")
-    else:
-        sinais.append("📌 Extra: Pequeno pavio superior: False")
-    
-    total = sinais_fortes + extras
-    sinais.append(f"✔️ Total: {sinais_fortes} fortes + {extras} extras = {total}/9")
-
-    entrada_confirmada = False
-    if sinais_fortes >= 5 or (sinais_fortes == 4 and extras >= 1):
-        entrada_confirmada = True
-        sinais.append(f"🔔 {datetime.now(timezone.utc)} | Entrada validada com 4 fortes + 1 ou mais extras!")
-    
-    return entrada_confirmada, sinais
-
-def enviar_ordem():
+# === FUNÇÃO DE ANÁLISE DE MERCADO ===
+def analisar_mercado(symbol):
     try:
-        # Leverage
-        r = requests.post(f"{BASE_URL}/v5/position/set-leverage", json={
-            "category": "linear",
-            "symbol": SYMBOL,
-            "buyLeverage": LEVERAGE,
-            "sellLeverage": LEVERAGE
-        }, headers={"X-BAPI-API-KEY": API_KEY})
-        
-        # Preço
-        r_price = requests.get(f"{BASE_URL}/v5/market/tickers", params={
-            "category": "linear",
-            "symbol": SYMBOL
-        })
-        price = float(r_price.json()["result"]["list"][0]["lastPrice"])
-        qty = round(QTD_USDT * LEVERAGE / price, 3)
-
-        # Ordem
-        ordem = {
-            "category": "linear",
-            "symbol": SYMBOL,
-            "side": "Buy",
-            "orderType": "Market",
-            "qty": str(qty),
-            "timeInForce": "IOC"
-        }
-
-        r_ordem = requests.post(f"{BASE_URL}/v5/order/create", json=ordem, headers={"X-BAPI-API-KEY": API_KEY})
-        return r_ordem.json()
+        ticker = session.get_tickers(category="linear", symbol=symbol)
+        price = float(ticker["result"]["list"][0]["lastPrice"])
+        print(f"🔎 Sinal BUY detectado em {symbol} - Preço: {price}")
+        return True, price
     except Exception as e:
-        return {"error": str(e)}
+        print(f"❌ Erro ao buscar preço: {e}")
+        return False, 0
 
-def loop():
-    while True:
-        try:
-            df = obter_candles()
-            entrada, sinais = analisar(df)
-            msg = f"📊 Diagnóstico de sinais em {datetime.now(timezone.utc)}\n\n" + "\n".join(sinais)
-            enviar_mensagem(msg)
-            if entrada:
-                enviar_mensagem("✅ Entrada confirmada! Buy")
-                resultado = enviar_ordem()
-                enviar_mensagem(f"📦 Resultado ordem: {resultado}")
-        except Exception as e:
-            enviar_mensagem(f"❌ Erro no bot: {str(e)}")
-        time.sleep(60)
+# === FUNÇÃO DE ENVIO DE ORDEM ===
+def enviar_ordem(symbol, price):
+    try:
+        tp = round(price * (1 + TP_PORC / 100), 2)
+        sl = round(price * (1 - SL_PORC / 100), 2)
 
-if __name__ == "__main__":
-    loop()
+        print(f"📈 Enviando ordem: QTY {QTY}, TP {tp}, SL {sl}")
+
+        ordem = session.place_order(
+            category="linear",
+            symbol=symbol,
+            side="Buy",
+            order_type="Market",
+            qty=str(QTY),
+            take_profit=str(tp),
+            stop_loss=str(sl),
+            time_in_force="GoodTillCancel"
+        )
+
+        print(f"✅ Ordem enviada com sucesso: {ordem}")
+    except Exception as e:
+        print(f"❌ Erro ao enviar ordem: {e}")
+
+# === LOOP PRINCIPAL ===
+while True:
+    agora = datetime.now(timezone.utc).isoformat()
+    print(f"\n⏳ Analisando {PAIR} - {agora}")
+
+    sinal, preco = analisar_mercado(PAIR)
+
+    if sinal and preco > 0:
+        enviar_ordem(PAIR, preco)
+    else:
+        print(f"📉 Nenhum sinal detectado ou erro no preço para {PAIR}.")
+
+    print(f"\n⏰ Aguardando {INTERVALO} segundos para próxima análise...\n")
+    time.sleep(INTERVALO)
 
 
