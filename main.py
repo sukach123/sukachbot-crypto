@@ -71,22 +71,10 @@ def verificar_entrada(df):
     sinal_6 = corpo > ultimos5["close"].max() - ultimos5["low"].min()
     sinal_7 = nao_lateral
 
-    sinais_fortes = [
-        sinal_1,  # EMA10 vs EMA20
-        sinal_2,  # MACD > SINAL
-        sinal_3,  # CCI > 0
-        sinal_4,  # ADX > 20
-        sinal_7   # Não lateral
-    ]
-
+    sinais_fortes = [sinal_1, sinal_2, sinal_3, sinal_4, sinal_7]
     extra_1 = prev["close"] > prev["open"]
     extra_2 = (row["high"] - row["close"]) < corpo
-    sinais_extras = [
-        sinal_5,  # volume_explosivo
-        sinal_6,  # corpo_grande
-        extra_1,  # vela anterior de alta
-        extra_2   # pavio pequeno
-    ]
+    sinais_extras = [sinal_5, sinal_6, extra_1, extra_2]
 
     total_confirmados = sum(sinais_fortes) + sum(sinais_extras)
 
@@ -202,8 +190,7 @@ while True:
             else:
                 print(f"🔹 {symbol} sem entrada confirmada...")
         except Exception as e:
-            print(f"🚨 Erro geral no processamento de {symbol}: {e}")
-            time.sleep(1)
-    tempo_execucao = time.time() - inicio
-    if tempo_execucao < 1:
-        time.sleep(1 - tempo_execucao)
+            print(f"❌ Erro no símbolo {symbol}: {e}")
+    duracao = round(time.time() - inicio, 2)
+    print(f"🕒 Ciclo finalizado em {duracao} segundos. Aguardando próximo...\n")
+    time.sleep(3)
