@@ -1,5 +1,3 @@
-# === SukachBot PRO75 - Agora com TP de 1.5% automático e SL de -0.3% ===
-
 import pandas as pd
 import numpy as np
 from pybit.unified_trading import HTTP
@@ -71,12 +69,26 @@ def verificar_entrada(df):
     sinal_6 = corpo > ultimos5["close"].max() - ultimos5["low"].min()
     sinal_7 = nao_lateral
 
-    sinais_fortes = [sinal_1, sinal_2, sinal_3, sinal_4, sinal_7]
+    sinais_fortes = [
+        sinal_1,  # EMA10 vs EMA20
+        sinal_2,  # MACD > SINAL
+        sinal_3,  # CCI > 0
+        sinal_4,  # ADX > 20
+        sinal_7   # Não lateral
+    ]
+
     extra_1 = prev["close"] > prev["open"]
     extra_2 = (row["high"] - row["close"]) < corpo
-    sinais_extras = [sinal_5, sinal_6, extra_1, extra_2]
+    sinais_extras = [
+        sinal_5,  # volume_explosivo
+        sinal_6,  # corpo_grande
+        extra_1,  # vela anterior de alta
+        extra_2   # pavio pequeno
+    ]
 
-    total_confirmados = sum(sinais_fortes) + sum(sinais_extras)
+    fortes_confirmados = sum(sinais_fortes)
+    extras_confirmados = sum(sinais_extras)
+    total_confirmados = fortes_confirmados + extras_confirmados
 
     print(f"\n📊 Diagnóstico de sinais em {row['timestamp']}")
     print(f"📌 EMA10 vs EMA20: {sinal_1}")
@@ -88,17 +100,17 @@ def verificar_entrada(df):
     print(f"📌 Não lateral: {sinal_7}")
     print(f"📌 Extra: Vela anterior de alta: {extra_1}")
     print(f"📌 Extra: Pequeno pavio superior: {extra_2}")
-    print(f"✔️ Total: {sum(sinais_fortes)} fortes + {sum(sinais_extras)} extras = {total_confirmados}/9")
+    print(f"✔️ Total: {fortes_confirmados} fortes + {extras_confirmados} extras = {total_confirmados}/9")
 
-    if sum(sinais_fortes) >= 6 or (sum(sinais_fortes) == 5 and sum(sinais_extras) >= 2):
+    if fortes_confirmados >= 5 or (fortes_confirmados == 4 and extras_confirmados >= 1):
         preco_atual = row["close"]
         diferenca_ema = abs(row["EMA10"] - row["EMA20"])
         limite_colisao = preco_atual * 0.0001
 
-        print(f"🔔 {row['timestamp']} | Entrada validada com 6 sinais ou 5+2 extras!")
+        print(f"🔔 {row['timestamp']} | Entrada validada com regra 5 fortes ou 4 fortes + 1 extra!")
 
         if diferenca_ema < limite_colisao:
-            print(f"🚫 Entrada bloqueada ❌")
+            print(f"🚫 Entrada bloqueada por colisão de EMA ❌")
             return None
         else:
             direcao = "Buy" if row["EMA10"] > row["EMA20"] else "Sell"
@@ -190,7 +202,9 @@ while True:
             else:
                 print(f"🔹 {symbol} sem entrada confirmada...")
         except Exception as e:
-            print(f"❌ Erro no símbolo {symbol}: {e}")
-    duracao = round(time.time() - inicio, 2)
-    print(f"🕒 Ciclo finalizado em {duracao} segundos. Aguardando próximo...\n")
-    time.sleep(3)
+            print(f"🚨 Erro geral no processamento de {symbol}: {e}")
+            time.sleep(1)
+    tempo_execucao = time.time() - inicio
+    if tempo_execucao < 1:
+        time.sleep(1 - tempo_execucao)
+
