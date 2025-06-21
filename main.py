@@ -12,8 +12,14 @@ load_dotenv()
 # === Configurações ===
 symbols = ["BNBUSDT", "BTCUSDT", "DOGEUSDT", "SOLUSDT", "ADAUSDT", "ETHUSDT"]
 interval = "1"
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
 api_key = os.getenv("BYBIT_API_KEY")
 api_secret = os.getenv("BYBIT_API_SECRET")
+
 quantidade_usdt = 5
 
 session = HTTP(api_key=api_key, api_secret=api_secret, testnet=True)
