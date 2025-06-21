@@ -1,3 +1,5 @@
+# === SukachBot PRO75 - Agora com TP de 1.5% automático e SL de -0.3% ===
+
 import pandas as pd
 import numpy as np
 from pybit.unified_trading import HTTP
@@ -14,8 +16,9 @@ interval = "1"
 api_key = os.getenv("BYBIT_API_KEY")
 api_secret = os.getenv("BYBIT_API_SECRET")
 quantidade_usdt = 5
+use_testnet = os.getenv("USE_TESTNET", "False").lower() == "true"
 
-session = HTTP(api_key=api_key, api_secret=api_secret, testnet=False)
+session = HTTP(api_key=api_key, api_secret=api_secret, testnet=use_testnet)
 
 def fetch_candles(symbol, interval="1"):
     try:
@@ -25,7 +28,6 @@ def fetch_candles(symbol, interval="1"):
         df = df.astype({"open": float, "high": float, "low": float, "close": float, "volume": float})
         df["timestamp"] = pd.to_datetime(pd.to_numeric(df["timestamp"]), unit="ms", utc=True)
 
-        # Verificar se candle está atrasado
         now = datetime.now(timezone.utc)
         diff = now - df["timestamp"].iloc[-1]
         atraso = int(diff.total_seconds())
@@ -69,26 +71,12 @@ def verificar_entrada(df):
     sinal_6 = corpo > ultimos5["close"].max() - ultimos5["low"].min()
     sinal_7 = nao_lateral
 
-    sinais_fortes = [
-        sinal_1,  # EMA10 vs EMA20
-        sinal_2,  # MACD > SINAL
-        sinal_3,  # CCI > 0
-        sinal_4,  # ADX > 20
-        sinal_7   # Não lateral
-    ]
-
+    sinais_fortes = [sinal_1, sinal_2, sinal_3, sinal_4, sinal_7]
     extra_1 = prev["close"] > prev["open"]
     extra_2 = (row["high"] - row["close"]) < corpo
-    sinais_extras = [
-        sinal_5,  # volume_explosivo
-        sinal_6,  # corpo_grande
-        extra_1,  # vela anterior de alta
-        extra_2   # pavio pequeno
-    ]
+    sinais_extras = [sinal_5, sinal_6, extra_1, extra_2]
 
-    fortes_confirmados = sum(sinais_fortes)
-    extras_confirmados = sum(sinais_extras)
-    total_confirmados = fortes_confirmados + extras_confirmados
+    total_confirmados = sum(sinais_fortes) + sum(sinais_extras)
 
     print(f"\n📊 Diagnóstico de sinais em {row['timestamp']}")
     print(f"📌 EMA10 vs EMA20: {sinal_1}")
@@ -100,9 +88,9 @@ def verificar_entrada(df):
     print(f"📌 Não lateral: {sinal_7}")
     print(f"📌 Extra: Vela anterior de alta: {extra_1}")
     print(f"📌 Extra: Pequeno pavio superior: {extra_2}")
-    print(f"✔️ Total: {fortes_confirmados} fortes + {extras_confirmados} extras = {total_confirmados}/9")
+    print(f"✔️ Total: {sum(sinais_fortes)} fortes + {sum(sinais_extras)} extras = {total_confirmados}/9")
 
-    if fortes_confirmados >= 5 or (fortes_confirmados == 4 and extras_confirmados >= 1):
+    if sum(sinais_fortes) >= 5 or (sum(sinais_fortes) == 4 and sum(sinais_extras) >= 1):
         preco_atual = row["close"]
         diferenca_ema = abs(row["EMA10"] - row["EMA20"])
         limite_colisao = preco_atual * 0.0001
@@ -110,7 +98,7 @@ def verificar_entrada(df):
         print(f"🔔 {row['timestamp']} | Entrada validada com regra 5 fortes ou 4 fortes + 1 extra!")
 
         if diferenca_ema < limite_colisao:
-            print(f"🚫 Entrada bloqueada por colisão de EMA ❌")
+            print(f"🚫 Entrada bloqueada ❌")
             return None
         else:
             direcao = "Buy" if row["EMA10"] > row["EMA20"] else "Sell"
@@ -121,8 +109,8 @@ def verificar_entrada(df):
         return None
 
 def colocar_sl_tp(symbol, lado, preco_entrada, quantidade):
-    preco_sl = preco_entrada * 0.997  # SL de -0.3%
-    preco_tp = preco_entrada * 1.015  # TP de +1.5%
+    preco_sl = preco_entrada * 0.997
+    preco_tp = preco_entrada * 1.015
 
     for tentativa in range(5):
         try:
