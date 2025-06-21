@@ -1,5 +1,3 @@
-# === SukachBot PRO75 - Agora com TP de 1.5% automático e SL de -0.3% ===
-
 import pandas as pd
 import numpy as np
 from pybit.unified_trading import HTTP
@@ -13,7 +11,7 @@ load_dotenv()
 # === Configurações ===
 symbols = ["BNBUSDT", "BTCUSDT", "DOGEUSDT", "SOLUSDT", "ADAUSDT", "ETHUSDT"]
 interval = "1"
-api_key = os.getenv("BYBIT_API_KEY")
+api_key = os.getenv("CHAVE_API_BYBIT")
 api_secret = os.getenv("BYBIT_API_SECRET")
 quantidade_usdt = 5
 use_testnet = os.getenv("USE_TESTNET", "False").lower() == "true"
@@ -160,7 +158,7 @@ def enviar_ordem(symbol, lado):
 
         session.set_leverage(category="linear", symbol=symbol, buyLeverage=10, sellLeverage=10)
 
-        response = session.place_order(
+        session.place_order(
             category="linear",
             symbol=symbol,
             side=lado,
