@@ -3,6 +3,7 @@ import numpy as np
 from pybit.unified_trading import HTTP
 import time
 import os
+import math
 from dotenv import load_dotenv
 from datetime import datetime, timezone
 
@@ -11,12 +12,11 @@ load_dotenv()
 # === Configurações ===
 symbols = ["BNBUSDT", "BTCUSDT", "DOGEUSDT", "SOLUSDT", "ADAUSDT", "ETHUSDT"]
 interval = "1"
-api_key = os.getenv("CHAVE_API_BYBIT")
+api_key = os.getenv("BYBIT_API_KEY")
 api_secret = os.getenv("BYBIT_API_SECRET")
 quantidade_usdt = 5
-use_testnet = os.getenv("USE_TESTNET", "False").lower() == "true"
 
-session = HTTP(api_key=api_key, api_secret=api_secret, testnet=use_testnet)
+session = HTTP(api_key=api_key, api_secret=api_secret, testnet=True)
 
 def fetch_candles(symbol, interval="1"):
     try:
@@ -106,6 +106,18 @@ def verificar_entrada(df):
         print(f"🔎 {row['timestamp']} | Apenas {total_confirmados}/9 sinais confirmados | Entrada bloqueada ❌")
         return None
 
+def obter_precisao_quantidade(symbol):
+    try:
+        info = session.get_instruments_info(category="linear", symbol=symbol)
+        step = float(info['result']['list'][0]['lotSizeFilter']['qtyStep'])
+        return step
+    except Exception as e:
+        print(f"⚠️ Erro ao obter precisão de quantidade de {symbol}: {e}")
+        return 0.001
+
+def ajustar_quantidade(qty, step):
+    return math.floor(qty / step) * step
+
 def colocar_sl_tp(symbol, lado, preco_entrada, quantidade):
     preco_sl = preco_entrada * 0.997
     preco_tp = preco_entrada * 1.015
@@ -144,7 +156,8 @@ def enviar_ordem(symbol, lado):
     try:
         dados_ticker = session.get_tickers(category="linear", symbol=symbol)
         preco_atual = float(dados_ticker['result']['list'][0]['lastPrice'])
-        quantidade = round(quantidade_usdt / preco_atual, 3)
+        step = obter_precisao_quantidade(symbol)
+        quantidade = ajustar_quantidade(quantidade_usdt / preco_atual, step)
 
         print(f"📦 Tentando enviar ordem:")
         print(f"    ➤ Par: {symbol}")
@@ -193,4 +206,5 @@ while True:
     tempo_execucao = time.time() - inicio
     if tempo_execucao < 1:
         time.sleep(1 - tempo_execucao)
+
 
