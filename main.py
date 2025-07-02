@@ -1,9 +1,10 @@
+# === SukachBot PRO75 - Atualizado ===
+
 import pandas as pd
 import numpy as np
 from pybit.unified_trading import HTTP
 import time
 import os
-import math
 from dotenv import load_dotenv
 from datetime import datetime, timezone
 
@@ -12,14 +13,8 @@ load_dotenv()
 # === Configurações ===
 symbols = ["BNBUSDT", "BTCUSDT", "DOGEUSDT", "SOLUSDT", "ADAUSDT", "ETHUSDT"]
 interval = "1"
-from dotenv import load_dotenv
-import os
-
-load_dotenv()
-
 api_key = os.getenv("BYBIT_API_KEY")
 api_secret = os.getenv("BYBIT_API_SECRET")
-
 quantidade_usdt = 5
 
 session = HTTP(api_key=api_key, api_secret=api_secret, testnet=True)
@@ -32,6 +27,7 @@ def fetch_candles(symbol, interval="1"):
         df = df.astype({"open": float, "high": float, "low": float, "close": float, "volume": float})
         df["timestamp"] = pd.to_datetime(pd.to_numeric(df["timestamp"]), unit="ms", utc=True)
 
+        # Verificar se candle está atrasado
         now = datetime.now(timezone.utc)
         diff = now - df["timestamp"].iloc[-1]
         atraso = int(diff.total_seconds())
@@ -76,11 +72,10 @@ def verificar_entrada(df):
     sinal_7 = nao_lateral
 
     sinais_fortes = [sinal_1, sinal_2, sinal_3, sinal_4, sinal_7]
-    extra_1 = prev["close"] > prev["open"]
-    extra_2 = (row["high"] - row["close"]) < corpo
-    sinais_extras = [sinal_5, sinal_6, extra_1, extra_2]
+    sinais_extras = [sinal_5, sinal_6, prev["close"] > prev["open"], (row["high"] - row["close"]) < corpo]
 
-    total_confirmados = sum(sinais_fortes) + sum(sinais_extras)
+    total_fortes = sum(sinais_fortes)
+    total_extras = sum(sinais_extras)
 
     print(f"\n📊 Diagnóstico de sinais em {row['timestamp']}")
     print(f"📌 EMA10 vs EMA20: {sinal_1}")
@@ -90,11 +85,11 @@ def verificar_entrada(df):
     print(f"📌 Volume explosivo: {sinal_5} (volume: {row['volume']:.2f})")
     print(f"📌 Corpo grande: {sinal_6}")
     print(f"📌 Não lateral: {sinal_7}")
-    print(f"📌 Extra: Vela anterior de alta: {extra_1}")
-    print(f"📌 Extra: Pequeno pavio superior: {extra_2}")
-    print(f"✔️ Total: {sum(sinais_fortes)} fortes + {sum(sinais_extras)} extras = {total_confirmados}/9")
+    print(f"📌 Extra: Vela anterior de alta: {prev['close'] > prev['open']}")
+    print(f"📌 Extra: Pequeno pavio superior: {(row['high'] - row['close']) < corpo}")
+    print(f"✔️ Total: {total_fortes} fortes + {total_extras} extras = {total_fortes + total_extras}/9")
 
-    if sum(sinais_fortes) >= 5 or (sum(sinais_fortes) == 4 and sum(sinais_extras) >= 1):
+    if total_fortes >= 5 or (total_fortes == 4 and total_extras >= 1):
         preco_atual = row["close"]
         diferenca_ema = abs(row["EMA10"] - row["EMA20"])
         limite_colisao = preco_atual * 0.0001
@@ -109,24 +104,12 @@ def verificar_entrada(df):
             print(f"✅ Entrada confirmada! {direcao}")
             return direcao
     else:
-        print(f"🔎 {row['timestamp']} | Apenas {total_confirmados}/9 sinais confirmados | Entrada bloqueada ❌")
+        print(f"🔎 {row['timestamp']} | Apenas {total_fortes + total_extras}/9 sinais confirmados | Entrada bloqueada ❌")
         return None
 
-def obter_precisao_quantidade(symbol):
-    try:
-        info = session.get_instruments_info(category="linear", symbol=symbol)
-        step = float(info['result']['list'][0]['lotSizeFilter']['qtyStep'])
-        return step
-    except Exception as e:
-        print(f"⚠️ Erro ao obter precisão de quantidade de {symbol}: {e}")
-        return 0.001
-
-def ajustar_quantidade(qty, step):
-    return math.floor(qty / step) * step
-
 def colocar_sl_tp(symbol, lado, preco_entrada, quantidade):
-    preco_sl = preco_entrada * 0.997
-    preco_tp = preco_entrada * 1.015
+    preco_sl = preco_entrada * 0.997  # SL -0.3%
+    preco_tp = preco_entrada * 1.015  # TP +1.5%
 
     for tentativa in range(5):
         try:
@@ -162,8 +145,7 @@ def enviar_ordem(symbol, lado):
     try:
         dados_ticker = session.get_tickers(category="linear", symbol=symbol)
         preco_atual = float(dados_ticker['result']['list'][0]['lastPrice'])
-        step = obter_precisao_quantidade(symbol)
-        quantidade = ajustar_quantidade(quantidade_usdt / preco_atual, step)
+        quantidade = max(round(quantidade_usdt / preco_atual, 3), 0.01)
 
         print(f"📦 Tentando enviar ordem:")
         print(f"    ➤ Par: {symbol}")
@@ -175,7 +157,10 @@ def enviar_ordem(symbol, lado):
             print("🚫 Quantidade inválida! Ordem não enviada.")
             return
 
-        session.set_leverage(category="linear", symbol=symbol, buyLeverage=10, sellLeverage=10)
+        try:
+            session.set_leverage(category="linear", symbol=symbol, buyLeverage=10, sellLeverage=10)
+        except Exception as e:
+            print(f"⚠️ Erro ao ajustar alavancagem para {symbol}: {e}")
 
         session.place_order(
             category="linear",
@@ -209,8 +194,8 @@ while True:
         except Exception as e:
             print(f"🚨 Erro geral no processamento de {symbol}: {e}")
             time.sleep(1)
+
     tempo_execucao = time.time() - inicio
     if tempo_execucao < 1:
         time.sleep(1 - tempo_execucao)
-
 
